@@ -8,17 +8,13 @@
   ],
   "routes": [
     {
-      "src": "/example-smart-app/(.*)",
+      "src": "/(.*)",
       "dest": "/example-smart-app/$1"
-    },
-    {
-      "src": "/",
-      "dest": "/example-smart-app/index.html"
     }
   ],
   "headers": [
     {
-      "source": "/example-smart-app/(.*)",
+      "source": "/(.*)",
       "headers": [
         {
           "key": "Access-Control-Allow-Origin",
