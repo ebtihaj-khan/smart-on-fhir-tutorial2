@@ -28,10 +28,24 @@
 
         $.when(pt, obv).done(function(patient, obv) {
           // Handle the FHIR client response format
-          var observations = obv.entry ? obv.entry.map(function(entry) { return entry.resource; }) : [];
+          console.log('Patient data:', patient);
+          console.log('Observations data:', obv);
+          
+          var observations = [];
+          if (obv && obv.entry) {
+            observations = obv.entry.map(function(entry) { return entry.resource; });
+          } else if (Array.isArray(obv)) {
+            observations = obv;
+          }
+          
+          console.log('Processed observations:', observations);
           var byCodes = function(code) {
+            if (!Array.isArray(observations)) {
+              console.log('Observations is not an array:', observations);
+              return [];
+            }
             return observations.filter(function(obs) {
-              if (obs.code && obs.code.coding) {
+              if (obs && obs.code && obs.code.coding) {
                 return obs.code.coding.some(function(coding) {
                   return coding.code === code;
                 });
