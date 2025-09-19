@@ -1,17 +1,5 @@
 {
   "version": 2,
-  "builds": [
-    {
-      "src": "example-smart-app/**/*",
-      "use": "@vercel/static"
-    }
-  ],
-  "routes": [
-    {
-      "src": "/(.*)",
-      "dest": "/example-smart-app/$1"
-    }
-  ],
   "headers": [
     {
       "source": "/(.*)",
