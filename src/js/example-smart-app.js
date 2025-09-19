@@ -13,7 +13,7 @@
         var pt = patient.read();
         
         // Use the FHIR client API for fetching observations
-        var obv = smart.patient.request({
+        var obv = smart.patient.api.fetchAll({
                     type: 'Observation',
                     query: {
                       code: {
@@ -28,7 +28,7 @@
 
         $.when(pt, obv).done(function(patient, obv) {
           // Handle the FHIR client response format
-          var observations = obv.entry ? obv.entry.map(function(entry) { return entry.resource; }) : obv;
+          var observations = obv;
           var byCodes = function(code) {
             return observations.filter(function(obs) {
               if (obs.code && obs.code.coding) {
