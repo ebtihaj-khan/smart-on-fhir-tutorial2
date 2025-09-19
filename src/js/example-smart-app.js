@@ -20,9 +20,8 @@
                     }
                   });
 
-        $.when(pt, obv).fail(onError);
-
-        $.when(pt, obv).done(function(patient, obv) {
+        // Handle Promises properly
+        Promise.all([pt, obv]).then(function([patient, obv]) {
           // Handle the FHIR client response format
           console.log('Patient data:', patient);
           console.log('Observations data:', obv);
@@ -102,6 +101,9 @@
           p.ldl = getQuantityValueAndUnit(ldl[0]);
 
           ret.resolve(p);
+        }).catch(function(error) {
+          console.log('Promise error:', error);
+          onError();
         });
       } else {
         onError();
