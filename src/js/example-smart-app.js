@@ -11,7 +11,9 @@
       if (smart.hasOwnProperty('patient')) {
         var patient = smart.patient;
         var pt = patient.read();
-        var obv = smart.patient.api.fetchAll({
+        
+        // Use the new FHIR client API for fetching observations
+        var obv = smart.patient.request({
                     type: 'Observation',
                     query: {
                       code: {
@@ -25,7 +27,18 @@
         $.when(pt, obv).fail(onError);
 
         $.when(pt, obv).done(function(patient, obv) {
-          var byCodes = smart.byCodes(obv, 'code');
+          // Handle the new FHIR client response format
+          var observations = obv.entry ? obv.entry.map(function(entry) { return entry.resource; }) : obv;
+          var byCodes = function(code) {
+            return observations.filter(function(obs) {
+              if (obs.code && obs.code.coding) {
+                return obs.code.coding.some(function(coding) {
+                  return coding.code === code;
+                });
+              }
+              return false;
+            });
+          };
           var gender = patient.gender;
 
           var fname = '';
