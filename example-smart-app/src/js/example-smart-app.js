@@ -13,8 +13,8 @@
         var pt = patient.read();
         
         // Use the FHIR client API for fetching observations
-        var obv = smart.patient.request({
-                    type: 'Observation',
+        var obv = smart.request({
+                    url: 'Observation',
                     query: {
                       code: {
                         $or: ['http://loinc.org|8302-2', 'http://loinc.org|8462-4',
