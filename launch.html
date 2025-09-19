@@ -21,10 +21,24 @@
     <!-- FHIR Client JS Library -->
     <script src='https://unpkg.com/fhirclient@2.4.0/build/fhir-client.js?v=2.4.0'></script>
     <script>
-      FHIR.oauth2.authorize({
-        'client_id': '43ae576d-41fd-4e5e-a654-45c7d294f919',
-        'scope':  'patient/Patient.read patient/Observation.read launch/patient online_access openid profile fhirUser'
-      });
+      // Get the iss parameter from the URL
+      const urlParams = new URLSearchParams(window.location.search);
+      const iss = urlParams.get('iss');
+      
+      if (iss) {
+        // Launch with iss parameter (from EHR)
+        FHIR.oauth2.authorize({
+          'client_id': '43ae576d-41fd-4e5e-a654-45c7d294f919',
+          'scope': 'patient/Patient.read patient/Observation.read launch/patient online_access openid profile fhirUser',
+          'iss': iss
+        });
+      } else {
+        // Launch without iss parameter (standalone)
+        FHIR.oauth2.authorize({
+          'client_id': '43ae576d-41fd-4e5e-a654-45c7d294f919',
+          'scope': 'patient/Patient.read patient/Observation.read launch/patient online_access openid profile fhirUser'
+        });
+      }
     </script>
     <div class="spinner">
       <div class="bounce1"></div>
