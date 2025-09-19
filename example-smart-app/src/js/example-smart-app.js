@@ -16,11 +16,7 @@
         var obv = smart.request({
                     url: 'Observation',
                     query: {
-                      code: {
-                        $or: ['http://loinc.org|8302-2', 'http://loinc.org|8462-4',
-                              'http://loinc.org|8480-6', 'http://loinc.org|2085-9',
-                              'http://loinc.org|2089-1', 'http://loinc.org|55284-4']
-                      }
+                      _count: 10
                     }
                   });
 
@@ -34,8 +30,12 @@
           var observations = [];
           if (obv && obv.entry) {
             observations = obv.entry.map(function(entry) { return entry.resource; });
+            console.log('Found observations in Bundle.entry:', observations.length);
           } else if (Array.isArray(obv)) {
             observations = obv;
+            console.log('Found observations as direct array:', observations.length);
+          } else {
+            console.log('No observations found. Response structure:', obv);
           }
           
           console.log('Processed observations:', observations);
