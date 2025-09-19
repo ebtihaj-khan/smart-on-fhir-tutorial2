@@ -33,10 +33,20 @@
 
           if (typeof patient.name !== 'undefined' && patient.name.length > 0) {
             if (typeof patient.name[0].given !== 'undefined') {
-              fname = patient.name[0].given.join(' ');
+              // Handle both DSTU2 (array) and R4 (string) formats
+              if (Array.isArray(patient.name[0].given)) {
+                fname = patient.name[0].given.join(' ');
+              } else {
+                fname = patient.name[0].given;
+              }
             }
             if (typeof patient.name[0].family !== 'undefined') {
-              lname = patient.name[0].family.join(' ');
+              // Handle both DSTU2 (array) and R4 (string) formats
+              if (Array.isArray(patient.name[0].family)) {
+                lname = patient.name[0].family.join(' ');
+              } else {
+                lname = patient.name[0].family;
+              }
             }
           }
 
