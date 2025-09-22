@@ -15,6 +15,10 @@
         console.log('SMART patient object:', smart.patient);
         console.log('SMART state:', smart.state);
         console.log('SMART user:', smart.user);
+        console.log('OAuth token scopes:', smart.state.tokenResponse?.scope);
+        console.log('Full token response:', smart.state.tokenResponse);
+        console.log('FHIR server URL:', smart.state.serverUrl);
+        console.log('Client ID:', smart.state.clientId);
         var patient = smart.patient;
         
         // Check if patient.read is available
