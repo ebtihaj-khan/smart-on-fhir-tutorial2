@@ -38,23 +38,18 @@
         console.log('Launch parameters:', { iss, launch });
         
         if (iss) {
-          // Launch with iss parameter (from EHR)
-          const authConfig = {
+          // Launch with iss parameter (from EHR) - use the proper launch sequence
+          console.log('Starting EHR launch sequence');
+          FHIR.oauth2.authorize({
             'client_id': '43ae576d-41fd-4e5e-a654-45c7d294f919',
             'scope': 'patient/Patient.read patient/Observation.read launch/patient online_access openid profile fhirUser',
             'iss': iss,
+            'launch': launch,
             'redirect_uri': 'https://smart-on-fhir-tutorial2.vercel.app/launch.html'
-          };
-          
-          // Add launch parameter if present
-          if (launch) {
-            authConfig.launch = launch;
-          }
-          
-          console.log('Auth config:', authConfig);
-          FHIR.oauth2.authorize(authConfig);
+          });
         } else {
           // Launch without iss parameter (standalone)
+          console.log('Starting standalone launch');
           FHIR.oauth2.authorize({
             'client_id': '43ae576d-41fd-4e5e-a654-45c7d294f919',
             'scope': 'patient/Patient.read patient/Observation.read launch/patient online_access openid profile fhirUser'
