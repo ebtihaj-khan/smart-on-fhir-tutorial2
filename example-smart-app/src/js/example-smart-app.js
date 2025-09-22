@@ -8,7 +8,10 @@
     }
 
     function onReady(smart)  {
-      if (smart.hasOwnProperty('patient')) {
+      console.log('SMART client ready:', smart);
+      
+      if (smart.hasOwnProperty('patient') && smart.patient) {
+        console.log('Patient context available');
         var patient = smart.patient;
         var pt = patient.read();
         
@@ -106,6 +109,8 @@
           onError();
         });
       } else {
+        console.log('No patient context available');
+        console.log('SMART client properties:', Object.keys(smart));
         onError();
       }
     }
