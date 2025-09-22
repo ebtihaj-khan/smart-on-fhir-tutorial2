@@ -21,35 +21,45 @@
     <!-- FHIR Client JS Library -->
     <script src='https://unpkg.com/fhirclient@2.4.0/build/fhir-client.js?v=2.4.0'></script>
     <script>
-      // Get the iss and launch parameters from the URL
+      // Check if this is an OAuth callback (has code parameter)
       const urlParams = new URLSearchParams(window.location.search);
-      const iss = urlParams.get('iss');
-      const launch = urlParams.get('launch');
+      const code = urlParams.get('code');
+      const state = urlParams.get('state');
       
-      console.log('Launch parameters:', { iss, launch });
-      
-      if (iss) {
-        // Launch with iss parameter (from EHR)
-        const authConfig = {
-          'client_id': '43ae576d-41fd-4e5e-a654-45c7d294f919',
-          'scope': 'patient/Patient.read patient/Observation.read launch/patient online_access openid profile fhirUser',
-          'iss': iss,
-          'redirect_uri': 'https://smart-on-fhir-tutorial2.vercel.app/launch.html'
-        };
-        
-        // Add launch parameter if present
-        if (launch) {
-          authConfig.launch = launch;
-        }
-        
-        console.log('Auth config:', authConfig);
-        FHIR.oauth2.authorize(authConfig);
+      if (code) {
+        // This is an OAuth callback - redirect to the main app
+        console.log('OAuth callback received, redirecting to main app');
+        window.location.href = './index.html';
       } else {
-        // Launch without iss parameter (standalone)
-        FHIR.oauth2.authorize({
-          'client_id': '43ae576d-41fd-4e5e-a654-45c7d294f919',
-          'scope': 'patient/Patient.read patient/Observation.read launch/patient online_access openid profile fhirUser'
-        });
+        // This is an initial launch - start OAuth flow
+        const iss = urlParams.get('iss');
+        const launch = urlParams.get('launch');
+        
+        console.log('Launch parameters:', { iss, launch });
+        
+        if (iss) {
+          // Launch with iss parameter (from EHR)
+          const authConfig = {
+            'client_id': '43ae576d-41fd-4e5e-a654-45c7d294f919',
+            'scope': 'patient/Patient.read patient/Observation.read launch/patient online_access openid profile fhirUser',
+            'iss': iss,
+            'redirect_uri': 'https://smart-on-fhir-tutorial2.vercel.app/launch.html'
+          };
+          
+          // Add launch parameter if present
+          if (launch) {
+            authConfig.launch = launch;
+          }
+          
+          console.log('Auth config:', authConfig);
+          FHIR.oauth2.authorize(authConfig);
+        } else {
+          // Launch without iss parameter (standalone)
+          FHIR.oauth2.authorize({
+            'client_id': '43ae576d-41fd-4e5e-a654-45c7d294f919',
+            'scope': 'patient/Patient.read patient/Observation.read launch/patient online_access openid profile fhirUser'
+          });
+        }
       }
     </script>
     <div class="spinner">
