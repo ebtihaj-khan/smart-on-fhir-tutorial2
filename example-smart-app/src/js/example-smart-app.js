@@ -13,7 +13,19 @@
       if (smart.hasOwnProperty('patient') && smart.patient) {
         console.log('Patient context available');
         var patient = smart.patient;
-        var pt = patient.read();
+        
+        // Check if patient.read is available
+        if (typeof patient.read === 'function') {
+          console.log('Patient.read function available');
+          var pt = patient.read();
+        } else {
+          console.log('Patient.read function not available, trying alternative approach');
+          // Try to get patient data directly
+          var pt = smart.patient.request({
+            type: 'Patient',
+            query: {}
+          });
+        }
         
         // Use the FHIR client API for fetching observations
         var obv = smart.request({
