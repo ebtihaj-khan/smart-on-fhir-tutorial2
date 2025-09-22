@@ -1,0 +1,10 @@
+# Vercel ignore file
+# This tells Vercel to use the root directory
+
+# Ignore any remaining example-smart-app references
+example-smart-app/
+
+# Ignore development files
+*.log
+.DS_Store
+node_modules/
