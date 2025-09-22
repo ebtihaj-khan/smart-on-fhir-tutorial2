@@ -1,19 +1,5 @@
 {
   "version": 2,
-  "rewrites": [
-    {
-      "source": "/",
-      "destination": "/example-smart-app/index.html"
-    },
-    {
-      "source": "/launch.html",
-      "destination": "/example-smart-app/launch.html"
-    },
-    {
-      "source": "/index.html",
-      "destination": "/example-smart-app/index.html"
-    }
-  ],
   "headers": [
     {
       "source": "/(.*)",
