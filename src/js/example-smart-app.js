@@ -12,12 +12,26 @@
       
       if (smart.hasOwnProperty('patient') && smart.patient) {
         console.log('Patient context available');
+        console.log('SMART patient object:', smart.patient);
+        console.log('SMART state:', smart.state);
+        console.log('SMART user:', smart.user);
         var patient = smart.patient;
         
         // Check if patient.read is available
         if (typeof patient.read === 'function') {
           console.log('Patient.read function available');
-          var pt = patient.read();
+          try {
+            var pt = patient.read();
+            console.log('Patient.read() called successfully');
+          } catch (error) {
+            console.log('Patient.read() failed:', error);
+            console.log('Trying alternative approach with smart.patient.request');
+            // Try to get patient data directly
+            var pt = smart.patient.request({
+              type: 'Patient',
+              query: {}
+            });
+          }
         } else {
           console.log('Patient.read function not available, trying alternative approach');
           // Try to get patient data directly
@@ -26,6 +40,17 @@
             query: {}
           });
         }
+        
+        // Add error handling for the patient Promise
+        pt = pt.catch(function(error) {
+          console.log('Patient.read() Promise failed:', error);
+          console.log('Trying alternative approach with smart.request');
+          // Try to get patient data directly using smart.request
+          return smart.request({
+            url: 'Patient',
+            query: {}
+          });
+        });
         
         // Use the FHIR client API for fetching observations
         var obv = smart.request({
@@ -37,20 +62,27 @@
 
         // Handle Promises properly
         Promise.all([pt, obv]).then(function([patient, obv]) {
-          // Handle the FHIR client response format
-          console.log('Patient data:', patient);
-          console.log('Observations data:', obv);
-          
-          var observations = [];
-          if (obv && obv.entry) {
-            observations = obv.entry.map(function(entry) { return entry.resource; });
-            console.log('Found observations in Bundle.entry:', observations.length);
-          } else if (Array.isArray(obv)) {
-            observations = obv;
-            console.log('Found observations as direct array:', observations.length);
-          } else {
-            console.log('No observations found. Response structure:', obv);
-          }
+        // Handle the FHIR client response format
+        console.log('Patient data:', patient);
+        console.log('Observations data:', obv);
+        
+        // Extract patient resource from Bundle if needed
+        var patientResource = patient;
+        if (patient && patient.resourceType === 'Bundle' && patient.entry && patient.entry.length > 0) {
+          patientResource = patient.entry[0].resource;
+          console.log('Extracted patient resource from Bundle:', patientResource);
+        }
+        
+        var observations = [];
+        if (obv && obv.entry) {
+          observations = obv.entry.map(function(entry) { return entry.resource; });
+          console.log('Found observations in Bundle.entry:', observations.length);
+        } else if (Array.isArray(obv)) {
+          observations = obv;
+          console.log('Found observations as direct array:', observations.length);
+        } else {
+          console.log('No observations found. Response structure:', obv);
+        }
           
           console.log('Processed observations:', observations);
           var byCodes = function(code) {
@@ -67,26 +99,26 @@
               return false;
             });
           };
-          var gender = patient.gender;
+          var gender = patientResource.gender;
 
           var fname = '';
           var lname = '';
 
-          if (typeof patient.name !== 'undefined' && patient.name.length > 0) {
-            if (typeof patient.name[0].given !== 'undefined') {
+          if (typeof patientResource.name !== 'undefined' && patientResource.name.length > 0) {
+            if (typeof patientResource.name[0].given !== 'undefined') {
               // Handle both DSTU2 (array) and R4 (string) formats
-              if (Array.isArray(patient.name[0].given)) {
-                fname = patient.name[0].given.join(' ');
+              if (Array.isArray(patientResource.name[0].given)) {
+                fname = patientResource.name[0].given.join(' ');
               } else {
-                fname = patient.name[0].given;
+                fname = patientResource.name[0].given;
               }
             }
-            if (typeof patient.name[0].family !== 'undefined') {
+            if (typeof patientResource.name[0].family !== 'undefined') {
               // Handle both DSTU2 (array) and R4 (string) formats
-              if (Array.isArray(patient.name[0].family)) {
-                lname = patient.name[0].family.join(' ');
+              if (Array.isArray(patientResource.name[0].family)) {
+                lname = patientResource.name[0].family.join(' ');
               } else {
-                lname = patient.name[0].family;
+                lname = patientResource.name[0].family;
               }
             }
           }
@@ -98,7 +130,7 @@
           var ldl = byCodes('2089-1');
 
           var p = defaultPatient();
-          p.birthdate = patient.birthDate;
+          p.birthdate = patientResource.birthDate;
           p.gender = gender;
           p.fname = fname;
           p.lname = lname;
