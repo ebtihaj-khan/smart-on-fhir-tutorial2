@@ -3,87 +3,137 @@
   <head>
     <meta http-equiv='X-UA-Compatible' content='IE=edge' />
     <meta http-equiv='Content-Type' content='text/html; charset=utf-8' />
-    <title>ebtihaj-khan-SMART-App</title>
-
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FH PA Dashboard</title>
     <link rel='stylesheet' type='text/css' href='./src/css/example-smart-app.css'>
-    <!--
-      Temporarily disable cerner-smart-embeddable-lib
-      <link rel='stylesheet' type='text/css' href='./lib/css/cerner-smart-embeddable-lib-1.0.0.min.css'>
-    -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
   </head>
   <body>
-    <div id='errors'>
+    <div id='errors'></div>
+    
+    <div id="loading" class="loading-container">
+      <div class="loading-spinner">
+        <div class="spinner"></div>
+        <p>Loading patient data...</p>
+      </div>
     </div>
-    <div id="loading" class="spinner">
-      <div class="bounce1"></div>
-      <div class="bounce2"></div>
-      <div class="bounce3"></div>
-    </div>
-    <div id='holder' >
-      <h2>Example-SMART-App</h2>
+    
+    <div id='holder' class="app-container">
+      <!-- Header -->
+      <header class="app-header">
+        <div class="header-content">
+                 <div class="app-title">
+                   <i class="fas fa-heartbeat"></i>
+                   <h1>FH PA Dashboard</h1>
+                 </div>
+          <div class="patient-badge">
+            <i class="fas fa-user"></i>
+            <span id="patient-name-display">Patient</span>
+          </div>
+        </div>
+      </header>
 
-      <h2>Patient Resource</h2>
-      <table>
-        <tr>
-          <th>First Name:</th>
-          <td id='fname'></td>
-        </tr>
-        <tr>
-          <th>Last Name:</th>
-          <td id='lname'></td>
-        </tr>
-        <tr>
-          <th>Gender:</th>
-          <td id='gender'></td>
-        </tr>
-        <tr>
-          <th>Date of Birth:</th>
-          <td id='birthdate'></td>
-        </tr>
-      </table>
-      <h2>Vitals & Observations</h2>
-      <table>
-        <tr>
-          <th>Height:</th>
-          <td id='height'></td>
-        </tr>
-        <tr>
-          <th>Systolic Blood Pressure:</th>
-          <td id='systolicbp'></td>
-        </tr>
-        <tr>
-          <th>Diastolic Blood Pressure:</th>
-          <td id='diastolicbp'></td>
-        </tr>
-        <tr>
-          <th>LDL:</th>
-          <td id='ldl'></td>
-        </tr>
-        <tr>
-          <th>HDL:</th>
-          <td id='hdl'></td>
-        </tr>
-      </table>
+      <!-- Main Content -->
+      <main class="main-content">
+        <!-- Patient Demographics Card -->
+        <section class="card patient-card">
+          <div class="card-header">
+            <i class="fas fa-user-circle"></i>
+            <h2>Patient Demographics</h2>
+          </div>
+          <div class="card-content">
+            <div class="info-grid">
+              <div class="info-item">
+                <label>First Name</label>
+                <span id='fname' class="value">-</span>
+              </div>
+              <div class="info-item">
+                <label>Last Name</label>
+                <span id='lname' class="value">-</span>
+              </div>
+              <div class="info-item">
+                <label>Gender</label>
+                <span id='gender' class="value">-</span>
+              </div>
+              <div class="info-item">
+                <label>Date of Birth</label>
+                <span id='birthdate' class="value">-</span>
+              </div>
+            </div>
+          </div>
+        </section>
 
-      <h2>Medications</h2>
-      <div id='medications'>
-        <p>Loading medications...</p>
-      </div>
+               <!-- Vitals Card -->
+               <section class="card vitals-card">
+                 <div class="card-header">
+                   <i class="fas fa-heartbeat"></i>
+                   <h2>Vitals & Observations</h2>
+                 </div>
+                 <div class="card-content">
+                   <div id='vitals' class="loading-state">
+                     <i class="fas fa-spinner fa-spin"></i>
+                     <span>Loading vitals...</span>
+                   </div>
+                 </div>
+               </section>
 
-      <h2>Allergies</h2>
-      <div id='allergies'>
-        <p>Loading allergies...</p>
-      </div>
+        <!-- Medications Card -->
+        <section class="card medications-card">
+          <div class="card-header">
+            <i class="fas fa-pills"></i>
+            <h2>Medications</h2>
+          </div>
+          <div class="card-content">
+            <div id='medications' class="loading-state">
+              <i class="fas fa-spinner fa-spin"></i>
+              <span>Loading medications...</span>
+            </div>
+          </div>
+        </section>
 
-      <h2>Conditions</h2>
-      <div id='conditions'>
-        <p>Loading conditions...</p>
-      </div>
+        <!-- Allergies Card -->
+        <section class="card allergies-card">
+          <div class="card-header">
+            <i class="fas fa-exclamation-triangle"></i>
+            <h2>Allergies</h2>
+          </div>
+          <div class="card-content">
+            <div id='allergies' class="loading-state">
+              <i class="fas fa-spinner fa-spin"></i>
+              <span>Loading allergies...</span>
+            </div>
+          </div>
+        </section>
 
-      <h2>Clinical Documents</h2>
-      <div id='documents'>
-        <p>Loading documents...</p>
-      </div>
+        <!-- Conditions Card -->
+        <section class="card conditions-card">
+          <div class="card-header">
+            <i class="fas fa-stethoscope"></i>
+            <h2>Conditions</h2>
+          </div>
+          <div class="card-content">
+            <div id='conditions' class="loading-state">
+              <i class="fas fa-spinner fa-spin"></i>
+              <span>Loading conditions...</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- Documents Card -->
+        <section class="card documents-card">
+          <div class="card-header">
+            <i class="fas fa-file-medical"></i>
+            <h2>Clinical Documents</h2>
+          </div>
+          <div class="card-content">
+            <div id='documents' class="loading-state">
+              <i class="fas fa-spinner fa-spin"></i>
+              <span>Loading documents...</span>
+            </div>
+          </div>
+        </section>
+      </main>
     </div>
     <!-- Required JS files to enable this page to embed within an MPage -->
     <!--
@@ -93,7 +143,7 @@
     -->
 
     <!-- Application-level javascript-->
-    <script src='./src/js/example-smart-app.js?v=3.0'></script>
+    <script src='./src/js/example-smart-app.js?v=5.1'></script>
 
     <!-- FHIR Client JS Library -->
     <script src='https://unpkg.com/fhirclient@2.4.0/build/fhir-client.js?v=2.4.0'></script>
