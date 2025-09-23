@@ -41,7 +41,7 @@
           <td id='birthdate'></td>
         </tr>
       </table>
-      <h2>Observation Resource</h2>
+      <h2>Vitals & Observations</h2>
       <table>
         <tr>
           <th>Height:</th>
@@ -50,7 +50,6 @@
         <tr>
           <th>Systolic Blood Pressure:</th>
           <td id='systolicbp'></td>
-
         </tr>
         <tr>
           <th>Diastolic Blood Pressure:</th>
@@ -65,6 +64,26 @@
           <td id='hdl'></td>
         </tr>
       </table>
+
+      <h2>Medications</h2>
+      <div id='medications'>
+        <p>Loading medications...</p>
+      </div>
+
+      <h2>Allergies</h2>
+      <div id='allergies'>
+        <p>Loading allergies...</p>
+      </div>
+
+      <h2>Conditions</h2>
+      <div id='conditions'>
+        <p>Loading conditions...</p>
+      </div>
+
+      <h2>Clinical Documents</h2>
+      <div id='documents'>
+        <p>Loading documents...</p>
+      </div>
     </div>
     <!-- Required JS files to enable this page to embed within an MPage -->
     <!--
@@ -74,7 +93,7 @@
     -->
 
     <!-- Application-level javascript-->
-    <script src='./src/js/example-smart-app.js?v=2.8'></script>
+    <script src='./src/js/example-smart-app.js?v=3.0'></script>
 
     <!-- FHIR Client JS Library -->
     <script src='https://unpkg.com/fhirclient@2.4.0/build/fhir-client.js?v=2.4.0'></script>
