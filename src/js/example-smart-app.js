@@ -47,6 +47,8 @@
     console.log('smart object:', smart);
     console.log('smart.state:', smart.state);
     console.log('smart.state.tokenResponse:', smart.state?.tokenResponse);
+    console.log('FHIR Server URL:', smart.state.serverUrl);
+    console.log('Expected ISS from launch:', window.location.search);
     
     // Try multiple methods to get encounter ID
     var encounterId = null;
@@ -103,6 +105,22 @@
            console.log('SMART client ready:', smart);
            console.log('SMART state:', smart.state);
            console.log('SMART patient:', smart.patient);
+           console.log('=== FHIR SERVER VERIFICATION ===');
+           console.log('Current FHIR Server URL:', smart.state.serverUrl);
+           console.log('Launch URL parameters:', window.location.search);
+           console.log('Expected ISS from launch:', new URLSearchParams(window.location.search).get('iss'));
+           console.log('Server URL matches ISS:', smart.state.serverUrl === new URLSearchParams(window.location.search).get('iss'));
+           console.log('Is Cerner URL:', smart.state.serverUrl.includes('cerner.com'));
+           console.log('Is SMART Health IT URL:', smart.state.serverUrl.includes('smarthealthit.org'));
+           
+           // Warning if not hitting expected server
+           const expectedIss = new URLSearchParams(window.location.search).get('iss');
+           if (expectedIss && !smart.state.serverUrl.includes('cerner.com') && expectedIss.includes('cerner.com')) {
+             console.warn('⚠️  WARNING: Expected Cerner server but got different server!');
+             console.warn('Expected ISS:', expectedIss);
+             console.warn('Actual Server URL:', smart.state.serverUrl);
+           }
+           console.log('================================');
            
            if (smart.hasOwnProperty('patient') && smart.patient) {
         var patient = smart.patient;
@@ -118,14 +136,16 @@
                // Try to get patient data directly
                var pt = smart.patient.request({
                  type: 'Patient',
-                 query: {}
+                 query: {},
+                 headers: { Accept: "application/fhir+json" }
                });
              }
            } else {
              // Try to get patient data directly
              var pt = smart.patient.request({
                type: 'Patient',
-               query: {}
+               query: {},
+               headers: { Accept: "application/fhir+json" }
              });
            }
            
@@ -134,8 +154,9 @@
              console.log('Patient read failed, trying direct request:', error);
              // Try to get patient data directly using smart.request
              return smart.request({
-               url: 'Patient',
-               query: {}
+               url: 'Patient/' + smart.patient.id,
+               query: {},
+               headers: { Accept: "application/fhir+json" }
              });
            });
            
@@ -149,11 +170,13 @@
            }
            
            console.log('Observation query params:', queryParams);
+           console.log('Patient ID:', smart.patient.id);
         
-        // Fetch all comprehensive data
+        // Fetch all comprehensive data with proper headers
         var obv = smart.request({
-          url: 'Observation',
-          query: queryParams
+          url: 'Observation?patient=' + smart.patient.id,
+          query: queryParams,
+          headers: { Accept: "application/fhir+json" }
         });
         
         // Determine FHIR version and use appropriate resource names
@@ -170,42 +193,58 @@
         console.log('Allergy query params:', allergyQuery);
         console.log('Condition query params:', conditionQuery);
         console.log('Document query params:', docQuery);
+        console.log('Request URLs will include patient ID:', smart.patient.id);
+        console.log('=== FHIR REQUEST URLS ===');
+        console.log('Base Server URL:', smart.state.serverUrl);
+        console.log('Patient ID:', smart.patient.id);
+        console.log('Observation URL:', smart.state.serverUrl + '/Observation?patient=' + smart.patient.id);
+        console.log('Medication URL (R4):', smart.state.serverUrl + '/MedicationRequest?patient=' + smart.patient.id);
+        console.log('Allergy URL:', smart.state.serverUrl + '/AllergyIntolerance?patient=' + smart.patient.id);
+        console.log('========================');
         
         if (fhirVersion === 'R2') {
           // DSTU2 (R2) resource names and structures
           meds = smart.request({
-            url: 'MedicationOrder',
-            query: medQuery
+            url: 'MedicationOrder?patient=' + smart.patient.id,
+            query: medQuery,
+            headers: { Accept: "application/fhir+json" }
           });
           allergies = smart.request({
-            url: 'AllergyIntolerance',
-            query: allergyQuery
+            url: 'AllergyIntolerance?patient=' + smart.patient.id,
+            query: allergyQuery,
+            headers: { Accept: "application/fhir+json" }
           });
           conditions = smart.request({
-            url: 'Condition',
-            query: conditionQuery
+            url: 'Condition?patient=' + smart.patient.id,
+            query: conditionQuery,
+            headers: { Accept: "application/fhir+json" }
           });
           documents = smart.request({
-            url: 'DocumentReference',
-            query: docQuery
+            url: 'DocumentReference?patient=' + smart.patient.id,
+            query: docQuery,
+            headers: { Accept: "application/fhir+json" }
           });
         } else {
           // R4 resource names
           meds = smart.request({
-            url: 'MedicationRequest',
-            query: medQuery
+            url: 'MedicationRequest?patient=' + smart.patient.id,
+            query: medQuery,
+            headers: { Accept: "application/fhir+json" }
           });
           allergies = smart.request({
-            url: 'AllergyIntolerance',
-            query: allergyQuery
+            url: 'AllergyIntolerance?patient=' + smart.patient.id,
+            query: allergyQuery,
+            headers: { Accept: "application/fhir+json" }
           });
           conditions = smart.request({
-            url: 'Condition',
-            query: conditionQuery
+            url: 'Condition?patient=' + smart.patient.id,
+            query: conditionQuery,
+            headers: { Accept: "application/fhir+json" }
           });
           documents = smart.request({
-            url: 'DocumentReference',
-            query: docQuery
+            url: 'DocumentReference?patient=' + smart.patient.id,
+            query: docQuery,
+            headers: { Accept: "application/fhir+json" }
           });
         }
 

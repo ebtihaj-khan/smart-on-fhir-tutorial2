@@ -49,12 +49,24 @@
         console.log('Environment detected:', currentConfig.environment);
         console.log('Using Client ID:', currentConfig.clientId);
         
-        FHIR.oauth2.authorize({
+        // Get URL parameters for iss and aud
+        const urlParams = new URLSearchParams(window.location.search);
+        const iss = urlParams.get('iss');
+        
+        const authConfig = {
             'client_id': currentConfig.clientId,
             'scope': 'patient/Patient.read user/Patient.read system/Patient.read patient/MedicationRequest.read user/MedicationRequest.read system/MedicationRequest.read patient/MedicationDispense.read user/MedicationDispense.read system/MedicationDispense.read patient/MedicationAdministration.read user/MedicationAdministration.read system/MedicationAdministration.read patient/AllergyIntolerance.read user/AllergyIntolerance.read system/AllergyIntolerance.read patient/Condition.read user/Condition.read system/Condition.read patient/DocumentReference.read user/DocumentReference.read system/DocumentReference.read patient/Observation.read user/Observation.read system/Observation.read launch online_access openid profile fhirUser',
             'redirect_uri': currentConfig.redirectUri,
             'response_type': 'code'
-        });
+        };
+        
+        // Add iss and aud if available (for EHR launches)
+        if (iss) {
+            authConfig.iss = iss;
+            authConfig.aud = iss;  // important for Cerner - set aud equal to iss
+        }
+        
+        FHIR.oauth2.authorize(authConfig);
     </script>
     <div class="spinner">
       <div class="bounce1"></div>
