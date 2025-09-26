@@ -277,8 +277,8 @@ The application requests minimal necessary scopes:
 
 ### Local Development
 ```bash
-python3 -m http.server 8000
-# Access at http://localhost:8000
+python3 -m http.server 443
+# Access at http://localhost:443
 ```
 
 ### Production Deployment
