@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SMART Health IT Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .test-link { 
+            display: inline-block; 
+            background: #007bff; 
+            color: white; 
+            padding: 15px 30px; 
+            text-decoration: none; 
+            border-radius: 5px; 
+            margin: 10px;
+        }
+        .test-link:hover { background: #0056b3; }
+    </style>
+</head>
+<body>
+    <h1>🧪 SMART on FHIR Testing</h1>
+    
+    <h2>Test with SMART Health IT Sandbox:</h2>
+    <a href="https://launch.smarthealthit.org/v/r4/fhir" class="test-link" target="_blank">
+        Launch SMART Health IT Sandbox
+    </a>
+    
+    <h2>Your App URLs:</h2>
+    <p><strong>Localhost:</strong> <a href="http://localhost:8000/launch.html">http://localhost:8000/launch.html</a></p>
+    <p><strong>Vercel:</strong> <a href="https://smart-on-fhir-tutorial2.vercel.app/launch.html">https://smart-on-fhir-tutorial2.vercel.app/launch.html</a></p>
+    
+    <h2>Instructions:</h2>
+    <ol>
+        <li>Click "Launch SMART Health IT Sandbox"</li>
+        <li>Select a patient</li>
+        <li>Enter your app URL (localhost or Vercel)</li>
+        <li>Launch the app</li>
+        <li>Verify it works with SMART Health IT first</li>
+    </ol>
+    
+    <h2>For Cerner Testing:</h2>
+    <p>After SMART Health IT works, configure Cerner Code Console with the Vercel URL.</p>
+</body>
+</html>
