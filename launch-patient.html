@@ -52,7 +52,7 @@
         
         const authConfig = {
             'client_id': currentConfig.clientId,
-            'scope': 'patient/Patient.read user/Patient.read system/Patient.read patient/MedicationRequest.read user/MedicationRequest.read system/MedicationRequest.read patient/MedicationDispense.read user/MedicationDispense.read system/MedicationDispense.read patient/MedicationAdministration.read user/MedicationAdministration.read system/MedicationAdministration.read patient/AllergyIntolerance.read user/AllergyIntolerance.read system/AllergyIntolerance.read patient/Condition.read user/Condition.read system/Condition.read patient/DocumentReference.read user/DocumentReference.read system/DocumentReference.read patient/Observation.read user/Observation.read system/Observation.read launch online_access openid profile fhirUser',
+            'scope': 'launch online_access openid profile fhirUser patient/Patient.read patient/Observation.read patient/MedicationRequest.read patient/AllergyIntolerance.read patient/Condition.read patient/DocumentReference.read',
             'redirect_uri': currentConfig.redirectUri,
             'response_type': 'code'
         };
