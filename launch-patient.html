@@ -21,10 +21,37 @@
     <!-- FHIR Client JS Library -->
     <script src='https://unpkg.com/fhirclient@2.4.0/build/fhir-client.js?v=2.4.0'></script>
     <script>
-      FHIR.oauth2.authorize({
-        'client_id': '43ae576d-41fd-4e5e-a654-45c7d294f919',
-        'scope':  'patient/Patient.read user/Patient.read system/Patient.read patient/MedicationRequest.read user/MedicationRequest.read system/MedicationRequest.read patient/MedicationDispense.read user/MedicationDispense.read system/MedicationDispense.read patient/MedicationAdministration.read user/MedicationAdministration.read system/MedicationAdministration.read patient/AllergyIntolerance.read user/AllergyIntolerance.read system/AllergyIntolerance.read patient/Condition.read user/Condition.read system/Condition.read patient/DocumentReference.read user/DocumentReference.read system/DocumentReference.read patient/Observation.read user/Observation.read system/Observation.read launch online_access openid profile fhirUser'
-      });
+        // Environment detection and configuration
+        const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        
+        // Configuration for different environments
+        const config = {
+            localhost: {
+                clientId: '43ae576d-41fd-4e5e-a654-45c7d294f919',
+                applicationId: '27f66c76-6f30-4a3e-9213-d4faf3ff2eba',
+                redirectUri: 'http://localhost:8000/',
+                environment: 'localhost'
+            },
+            vercel: {
+                clientId: 'f60d64fd-1ca1-4986-a661-bc28f2fc3ff7',
+                applicationId: 'a38f9781-2ae9-4e0f-bd25-085722b78b7d',
+                redirectUri: 'https://smart-on-fhir-tutorial2.vercel.app/',
+                environment: 'vercel'
+            }
+        };
+        
+        // Select configuration based on environment
+        const currentConfig = isLocalhost ? config.localhost : config.vercel;
+        
+        console.log('Environment detected:', currentConfig.environment);
+        console.log('Using Client ID:', currentConfig.clientId);
+        
+        FHIR.oauth2.authorize({
+            'client_id': currentConfig.clientId,
+            'scope': 'patient/Patient.read user/Patient.read system/Patient.read patient/MedicationRequest.read user/MedicationRequest.read system/MedicationRequest.read patient/MedicationDispense.read user/MedicationDispense.read system/MedicationDispense.read patient/MedicationAdministration.read user/MedicationAdministration.read system/MedicationAdministration.read patient/AllergyIntolerance.read user/AllergyIntolerance.read system/AllergyIntolerance.read patient/Condition.read user/Condition.read system/Condition.read patient/DocumentReference.read user/DocumentReference.read system/DocumentReference.read patient/Observation.read user/Observation.read system/Observation.read launch online_access openid profile fhirUser',
+            'redirect_uri': currentConfig.redirectUri,
+            'response_type': 'code'
+        });
     </script>
     <div class="spinner">
       <div class="bounce1"></div>

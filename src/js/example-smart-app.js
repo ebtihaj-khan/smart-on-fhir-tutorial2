@@ -85,10 +85,25 @@
 
     function onError() {
       console.log('Loading error', arguments);
+      
+      // Display user-friendly error message
+      var errorMessage = '<div style="padding: 20px; text-align: center; font-family: Arial, sans-serif;">';
+      errorMessage += '<h2>🚫 Launch Error</h2>';
+      errorMessage += '<p>This app needs to be launched from an EHR system.</p>';
+      errorMessage += '<p><strong>For testing:</strong></p>';
+      errorMessage += '<p><a href="https://launch.smarthealthit.org/v/r4/fhir" target="_blank" style="background: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Launch with SMART Health IT Sandbox</a></p>';
+      errorMessage += '<p><small>Or launch from Cerner Code Console</small></p>';
+      errorMessage += '</div>';
+      
+      document.body.innerHTML = errorMessage;
       ret.reject();
     }
 
          function onReady(smart)  {
+           console.log('SMART client ready:', smart);
+           console.log('SMART state:', smart.state);
+           console.log('SMART patient:', smart.patient);
+           
            if (smart.hasOwnProperty('patient') && smart.patient) {
            var patient = smart.patient;
            
@@ -116,6 +131,7 @@
            
            // Add error handling for the patient Promise
            pt = pt.catch(function(error) {
+             console.log('Patient read failed, trying direct request:', error);
              // Try to get patient data directly using smart.request
              return smart.request({
                url: 'Patient',
@@ -351,7 +367,25 @@
       }
     }
 
-    FHIR.oauth2.ready(onReady, onError);
+    // Configure FHIR client for Oracle Health
+    FHIR.oauth2.settings = {
+      replaceBrowserHistory: true,
+      completeInTarget: true
+    };
+    
+    // Add error handling for missing state
+    try {
+      FHIR.oauth2.ready(onReady, onError);
+    } catch (error) {
+      console.log('FHIR client initialization error:', error);
+      if (error.message && error.message.includes('No state found')) {
+        console.log('No OAuth state found - this usually means the app needs to be launched from an EHR');
+        console.log('For testing, use SMART Health IT sandbox: https://launch.smarthealthit.org/v/r4/fhir');
+        onError();
+      } else {
+        onError();
+      }
+    }
     return ret.promise();
 
   };
@@ -848,3 +882,4 @@
 
 
 })(window);
+
