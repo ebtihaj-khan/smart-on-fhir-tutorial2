@@ -99,13 +99,13 @@
       ret.reject();
     }
 
-         function onReady(smart)  {
+    function onReady(smart)  {
            console.log('SMART client ready:', smart);
            console.log('SMART state:', smart.state);
            console.log('SMART patient:', smart.patient);
            
            if (smart.hasOwnProperty('patient') && smart.patient) {
-           var patient = smart.patient;
+        var patient = smart.patient;
            
            // Get encounter ID from FHIR client context
            var encounterId = getEncounterIdFromContext(smart);
@@ -113,7 +113,7 @@
            // Check if patient.read is available
            if (typeof patient.read === 'function') {
              try {
-               var pt = patient.read();
+        var pt = patient.read();
              } catch (error) {
                // Try to get patient data directly
                var pt = smart.patient.request({
@@ -375,7 +375,7 @@
     
     // Add error handling for missing state
     try {
-      FHIR.oauth2.ready(onReady, onError);
+    FHIR.oauth2.ready(onReady, onError);
     } catch (error) {
       console.log('FHIR client initialization error:', error);
       if (error.message && error.message.includes('No state found')) {
