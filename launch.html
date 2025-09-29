@@ -39,8 +39,8 @@
         // Configuration for different environments
         const config = {
             localhost: {
-                clientId: '43ae576d-41fd-4e5e-a654-45c7d294f919',
-                applicationId: '27f66c76-6f30-4a3e-9213-d4faf3ff2eba',
+                clientId: '3e0b9045-0ea9-432a-848f-cccfed325142',
+                applicationId: 'ccfeb89f-1051-42c9-b53e-f9a411b69863',
                 redirectUri: 'http://localhost:443/',
                 environment: 'localhost'
             },
@@ -99,7 +99,7 @@
                 
                 const authConfig = {
                     'client_id': currentConfig.clientId,
-                    'scope': 'launch online_access openid profile fhirUser patient/Patient.read patient/Observation.read patient/MedicationRequest.read patient/AllergyIntolerance.read patient/Condition.read patient/DocumentReference.read',
+                    'scope': 'user/Practitioner.read patient/Patient.read patient/Observation.read patient/Encounter.read openid fhirUser',
                     'redirect_uri': currentConfig.redirectUri,
                     'response_type': 'code',
                     'iss': iss,
