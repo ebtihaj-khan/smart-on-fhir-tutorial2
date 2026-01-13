@@ -133,6 +133,151 @@
             </div>
           </div>
         </section>
+
+        <!-- Create Encounter Card -->
+        <section class="card encounter-card">
+          <div class="card-header">
+            <i class="fas fa-calendar-plus"></i>
+            <h2>Create New Encounter</h2>
+          </div>
+          <div class="card-content">
+            <form id="encounter-form" style="max-width: 600px;">
+              <div style="margin-bottom: 15px;">
+                <label for="encounter-status" style="display: block; margin-bottom: 5px; font-weight: 500;">Status:</label>
+                <select id="encounter-status" required style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                  <option value="planned">Planned</option>
+                  <option value="arrived">Arrived</option>
+                  <option value="in-progress" selected>In Progress</option>
+                  <option value="finished">Finished</option>
+                  <option value="cancelled">Cancelled</option>
+                </select>
+              </div>
+              
+              <div style="margin-bottom: 15px;">
+                <label for="encounter-type" style="display: block; margin-bottom: 5px; font-weight: 500;">Type (Code) <small style="color: #666; font-weight: normal;">(Optional)</small>:</label>
+                <input type="text" id="encounter-type" placeholder="HL7 V2 codes: O (Outpatient), I (Inpatient), E (Emergency), P (Pre-admit)" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                <small style="color: #666; display: block; margin-top: 4px;">Uses HL7 V2 Code System. Note: Class field is inferred by Cerner and cannot be written directly.</small>
+              </div>
+              
+              <div style="margin-bottom: 15px;">
+                <label for="encounter-location" style="display: block; margin-bottom: 5px; font-weight: 500;">Location <small style="color: #666; font-weight: normal;">(Required - or use Service Provider below)</small>:</label>
+                <div style="display: flex; gap: 5px;">
+                  <input type="text" id="encounter-location" placeholder="Enter Location ID" style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                  <button type="button" id="find-locations-btn" style="padding: 8px 12px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; white-space: nowrap;">Find Locations</button>
+                </div>
+                <small style="color: #666; display: block; margin-top: 4px;">Enter Location ID. Click "Find Locations" to see available IDs in this system.</small>
+                <div id="locations-list" style="margin-top: 8px; display: none;"></div>
+              </div>
+              
+              <div style="margin-bottom: 15px;">
+                <label for="encounter-service-provider" style="display: block; margin-bottom: 5px; font-weight: 500;">Service Provider <small style="color: #666; font-weight: normal;">(Required if Location not provided)</small>:</label>
+                <div style="display: flex; gap: 5px;">
+                  <input type="text" id="encounter-service-provider" placeholder="Enter Organization ID" style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                  <button type="button" id="find-organizations-btn" style="padding: 8px 12px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; white-space: nowrap;">Find Organizations</button>
+                </div>
+                <small style="color: #666; display: block; margin-top: 4px;">Enter Organization ID. Click "Find Organizations" to see available IDs in this system.</small>
+                <div id="organizations-list" style="margin-top: 8px; display: none;"></div>
+              </div>
+              
+              <div style="margin-bottom: 15px;">
+                <label for="encounter-reason" style="display: block; margin-bottom: 5px; font-weight: 500;">Reason Code (optional):</label>
+                <input type="text" id="encounter-reason" placeholder="Reason for encounter" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+              </div>
+              
+              <div style="margin-bottom: 15px;">
+                <label for="encounter-start" style="display: block; margin-bottom: 5px; font-weight: 500;">Start Date/Time (optional):</label>
+                <input type="datetime-local" id="encounter-start" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+              </div>
+              
+              <div style="margin-bottom: 15px;">
+                <label for="encounter-end" style="display: block; margin-bottom: 5px; font-weight: 500;">End Date/Time (optional):</label>
+                <input type="datetime-local" id="encounter-end" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+              </div>
+              
+              <button type="submit" id="create-encounter-btn" style="background: #007bff; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; font-weight: 500;">
+                <i class="fas fa-plus"></i> Create Encounter
+              </button>
+              
+              <div id="encounter-result" style="margin-top: 15px; padding: 10px; border-radius: 4px; display: none;"></div>
+            </form>
+          </div>
+        </section>
+
+        <!-- Update Encounter Card -->
+        <section class="card encounter-update-card">
+          <div class="card-header">
+            <i class="fas fa-edit"></i>
+            <h2>Update Existing Encounter</h2>
+          </div>
+          <div class="card-content">
+            <div style="margin-bottom: 20px;">
+              <label for="encounter-id-input" style="display: block; margin-bottom: 5px; font-weight: 500;">Encounter ID:</label>
+              <div style="display: flex; gap: 5px;">
+                <input type="text" id="encounter-id-input" placeholder="Enter Encounter ID" style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                <button type="button" id="find-encounters-btn" style="padding: 8px 12px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; white-space: nowrap;">
+                  <i class="fas fa-search"></i> Find
+                </button>
+                <button type="button" id="load-encounter-btn" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                  <i class="fas fa-download"></i> Load
+                </button>
+              </div>
+              <small style="color: #666; display: block; margin-top: 4px;">Click "Find" to see available encounters, or enter an ID directly and click "Load"</small>
+              <div id="encounters-list" style="margin-top: 8px; display: none;"></div>
+            </div>
+
+            <form id="update-encounter-form" style="max-width: 600px; display: none;">
+              <div style="margin-bottom: 15px; padding: 10px; background: #e7f3ff; border-radius: 4px;">
+                <strong>Loaded Encounter:</strong> <span id="loaded-encounter-info"></span>
+              </div>
+
+              <div style="margin-bottom: 15px;">
+                <label for="update-encounter-status" style="display: block; margin-bottom: 5px; font-weight: 500;">Status:</label>
+                <select id="update-encounter-status" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                  <option value="">-- Keep existing --</option>
+                  <option value="planned">Planned</option>
+                  <option value="arrived">Arrived</option>
+                  <option value="in-progress">In Progress</option>
+                  <option value="finished">Finished</option>
+                  <option value="cancelled">Cancelled</option>
+                </select>
+              </div>
+              
+              <div style="margin-bottom: 15px;">
+                <label for="update-encounter-type" style="display: block; margin-bottom: 5px; font-weight: 500;">Type (Code):</label>
+                <input type="text" id="update-encounter-type" placeholder="Leave empty to keep existing" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                <small style="color: #666; display: block; margin-top: 4px;">HL7 V2 codes: O (Outpatient), I (Inpatient), E (Emergency), P (Pre-admit)</small>
+              </div>
+              
+              <div style="margin-bottom: 15px;">
+                <label for="update-encounter-reason" style="display: block; margin-bottom: 5px; font-weight: 500;">Reason Code:</label>
+                <input type="text" id="update-encounter-reason" placeholder="Leave empty to keep existing, or clear to remove" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                <small style="color: #666; display: block; margin-top: 4px;">SNOMED CT code (numeric) or text. Leave empty to keep existing.</small>
+              </div>
+              
+              <div style="margin-bottom: 15px;">
+                <label for="update-encounter-start" style="display: block; margin-bottom: 5px; font-weight: 500;">Start Date/Time:</label>
+                <input type="datetime-local" id="update-encounter-start" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                <small style="color: #666; display: block; margin-top: 4px;">Leave empty to keep existing</small>
+              </div>
+              
+              <div style="margin-bottom: 15px;">
+                <label for="update-encounter-end" style="display: block; margin-bottom: 5px; font-weight: 500;">End Date/Time:</label>
+                <input type="datetime-local" id="update-encounter-end" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                <small style="color: #666; display: block; margin-top: 4px;">Leave empty to keep existing, or clear to remove end date</small>
+              </div>
+              
+              <button type="submit" id="update-encounter-btn" style="background: #ffc107; color: #000; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; font-weight: 500;">
+                <i class="fas fa-save"></i> Update Encounter
+              </button>
+              
+              <button type="button" id="cancel-update-btn" style="background: #6c757d; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; margin-left: 10px;">
+                Cancel
+              </button>
+              
+              <div id="update-encounter-result" style="margin-top: 15px; padding: 10px; border-radius: 4px; display: none;"></div>
+            </form>
+          </div>
+        </section>
       </main>
     </div>
     <!-- Required JS files to enable this page to embed within an MPage -->
@@ -143,24 +288,466 @@
     -->
 
     <!-- Application-level javascript-->
-    <script src='./src/js/example-smart-app.js?v=5.1'></script>
+    <script src='./src/js/example-smart-app.js?v=6.5'></script>
 
     <!-- FHIR Client JS Library -->
     <script src='https://unpkg.com/fhirclient@2.4.0/build/fhir-client.js?v=2.4.0'></script>
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.12.4/jquery.min.js"></script>
     <script>
+      // Show the dashboard immediately on page load
+      $(document).ready(function() {
+        $('#holder').addClass('show');
+        $('#loading').hide();
+        
+        // Set loading states for all sections
+        var sectionLoader = '<div class="loading-container"><div class="spinner"><div class="bounce1"></div><div class="bounce2"></div><div class="bounce3"></div></div></div>';
+        $('#vitals').html(sectionLoader);
+        $('#meds').html(sectionLoader);
+        $('#allergies').html(sectionLoader);
+        $('#conditions').html(sectionLoader);
+        $('#documents').html(sectionLoader);
+      });
+      
+      // Then start loading data
       extractData().then(
-        //Display Patient Demographics and Observations if extractData was success
         function(p) {
-          drawVisualization(p);
+          // Data loading is handled in extractData
         },
-
-        //Display 'Failed to call FHIR Service' if extractData failed
         function() {
-          $('#loading').hide();
-          $('#errors').html('<p> Failed to call FHIR Service </p>');
+          $('#errors').html('<p>Failed to call FHIR Service</p>');
         }
       );
+
+      // Handle "Find Locations" button
+      $('#find-locations-btn').on('click', function() {
+        var $btn = $(this);
+        var $list = $('#locations-list');
+        var originalText = $btn.html();
+        
+        $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Searching...');
+        $list.hide();
+        
+        if (typeof window.findAvailableResources === 'function') {
+          window.findAvailableResources('Location').then(function(resources) {
+            if (resources.length > 0) {
+              var html = '<div style="background: #f8f9fa; padding: 10px; border-radius: 4px; max-height: 200px; overflow-y: auto;">';
+              html += '<strong>Available Locations:</strong><ul style="margin: 5px 0; padding-left: 20px;">';
+              resources.forEach(function(resource) {
+                html += '<li style="margin: 5px 0; cursor: pointer;" onclick="$(\'#encounter-location\').val(\'' + resource.id + '\'); $(this).css(\'background\', \'#e7f3ff\');">';
+                html += '<strong>' + resource.display + '</strong>';
+                html += '</li>';
+              });
+              html += '</ul></div>';
+              $list.html(html).show();
+            } else {
+              $list.html('<div style="color: #856404; background: #fff3cd; padding: 8px; border-radius: 4px;">No locations found in this system.</div>').show();
+            }
+            $btn.prop('disabled', false).html(originalText);
+          }).catch(function(error) {
+            $list.html('<div style="color: #721c24; background: #f8d7da; padding: 8px; border-radius: 4px;">Error: ' + (error.message || 'Failed to search') + '</div>').show();
+            $btn.prop('disabled', false).html(originalText);
+          });
+        } else {
+          $list.html('<div style="color: #721c24; background: #f8d7da; padding: 8px; border-radius: 4px;">Function not available. Please launch from an EHR.</div>').show();
+          $btn.prop('disabled', false).html(originalText);
+        }
+      });
+
+      // Handle "Find Organizations" button
+      $('#find-organizations-btn').on('click', function() {
+        var $btn = $(this);
+        var $list = $('#organizations-list');
+        var originalText = $btn.html();
+        
+        $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Searching...');
+        $list.hide();
+        
+        if (typeof window.findAvailableResources === 'function') {
+          window.findAvailableResources('Organization').then(function(resources) {
+            if (resources.length > 0) {
+              var html = '<div style="background: #f8f9fa; padding: 10px; border-radius: 4px; max-height: 200px; overflow-y: auto;">';
+              html += '<strong>Available Organizations:</strong><ul style="margin: 5px 0; padding-left: 20px;">';
+              resources.forEach(function(resource) {
+                html += '<li style="margin: 5px 0; cursor: pointer;" onclick="$(\'#encounter-service-provider\').val(\'' + resource.id + '\'); $(this).css(\'background\', \'#e7f3ff\');">';
+                html += '<strong>' + resource.display + '</strong>';
+                html += '</li>';
+              });
+              html += '</ul></div>';
+              $list.html(html).show();
+            } else {
+              $list.html('<div style="color: #856404; background: #fff3cd; padding: 8px; border-radius: 4px;">No organizations found in this system.</div>').show();
+            }
+            $btn.prop('disabled', false).html(originalText);
+          }).catch(function(error) {
+            $list.html('<div style="color: #721c24; background: #f8d7da; padding: 8px; border-radius: 4px;">Error: ' + (error.message || 'Failed to search') + '</div>').show();
+            $btn.prop('disabled', false).html(originalText);
+          });
+        } else {
+          $list.html('<div style="color: #721c24; background: #f8d7da; padding: 8px; border-radius: 4px;">Function not available. Please launch from an EHR.</div>').show();
+          $btn.prop('disabled', false).html(originalText);
+        }
+      });
+
+      // Handle encounter form submission
+      $('#encounter-form').on('submit', function(e) {
+        e.preventDefault();
+        
+        var $btn = $('#create-encounter-btn');
+        var $result = $('#encounter-result');
+        var originalBtnText = $btn.html();
+        
+        // Disable button and show loading
+        $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Creating...');
+        $result.hide();
+        
+        // Collect form data
+        var encounterData = {
+          status: $('#encounter-status').val()
+          // Note: class field is NOT included - Cerner docs say it cannot be written directly
+        };
+        
+        // Location OR ServiceProvider is REQUIRED (per Cerner docs)
+        var locationValue = $('#encounter-location').val();
+        var serviceProviderValue = $('#encounter-service-provider').val();
+        
+        if (locationValue && locationValue.trim() !== '') {
+          encounterData.location = locationValue.trim();
+        } else if (serviceProviderValue && serviceProviderValue.trim() !== '') {
+          encounterData.serviceProvider = serviceProviderValue.trim();
+        } else {
+          alert('Error: Either Location or Service Provider is required. Please provide one of these fields.');
+          $btn.prop('disabled', false).html(originalBtnText);
+          return;
+        }
+        
+        // Only include type if explicitly provided
+        var typeValue = $('#encounter-type').val();
+        if (typeValue && typeValue.trim() !== '') {
+          encounterData.type = typeValue.trim();
+          // Use HL7 V2 Code System for encounter types (Cerner supported)
+          encounterData.typeSystem = 'http://terminology.hl7.org/CodeSystem/v2-0004';
+        }
+        
+        // Add reason code if provided
+        var reasonValue = $('#encounter-reason').val();
+        if (reasonValue && reasonValue.trim() !== '') {
+          encounterData.reasonCode = reasonValue.trim();
+        }
+        
+        // Add dates if provided
+        var startDate = $('#encounter-start').val();
+        var endDate = $('#encounter-end').val();
+        
+        if (startDate) {
+          // Convert datetime-local to ISO format
+          encounterData.startDate = new Date(startDate).toISOString();
+        }
+        
+        if (endDate) {
+          encounterData.endDate = new Date(endDate).toISOString();
+        }
+        
+        // Create encounter
+        if (typeof window.createEncounter === 'function') {
+          window.createEncounter(encounterData).then(function(response) {
+            $result.removeClass('error').addClass('success')
+              .html('<i class="fas fa-check-circle"></i> <strong>Success!</strong> Encounter created successfully.<br>' +
+                    '<small>ID: ' + (response.id || response.resource?.id || 'N/A') + '</small>')
+              .css({
+                'background-color': '#d4edda',
+                'color': '#155724',
+                'border': '1px solid #c3e6cb'
+              })
+              .show();
+            
+            // Reset form
+            $('#encounter-form')[0].reset();
+            $('#encounter-status').val('in-progress');
+            
+            $btn.prop('disabled', false).html(originalBtnText);
+          }).catch(function(error) {
+            var errorMsg = error.message || error.statusText || 'Unknown error occurred';
+            var errorDetails = '';
+            
+            if (error.responseJSON && error.responseJSON.issue) {
+              var issues = error.responseJSON.issue.map(function(i) {
+                return i.details?.text || i.diagnostics || '';
+              }).filter(function(m) { return m; });
+              
+              if (issues.length > 0) {
+                errorMsg = issues.join('<br>');
+              }
+              
+              // Add helpful tips for common errors
+              var errorMsgLower = errorMsg.toLowerCase();
+              if (errorMsgLower.includes('location') && (errorMsgLower.includes('not found') || errorMsgLower.includes('not supported') || errorMsgLower.includes('expected resource type'))) {
+                errorDetails = '<br><br><strong>💡 Tips:</strong><ul style="margin: 10px 0; padding-left: 20px;">';
+                errorDetails += '<li><strong>The Location ID does not exist in this system</strong></li>';
+                errorDetails += '<li>Try using <strong>Service Provider (Organization)</strong> instead - leave Location empty and enter an Organization ID</li>';
+                errorDetails += '<li>If testing with SMART Health IT sandbox, use valid IDs from that system (not Cerner example IDs)</li>';
+                errorDetails += '<li>Query Location or Organization resources to find valid IDs for your system</li>';
+                errorDetails += '</ul>';
+              } else if (errorMsgLower.includes('practitioner') && (errorMsgLower.includes('not found') || errorMsgLower.includes('not supported'))) {
+                errorDetails = '<br><br><strong>💡 Tips:</strong><ul style="margin: 10px 0; padding-left: 20px;">';
+                errorDetails += '<li><strong>The Practitioner ID does not exist in this system</strong></li>';
+                errorDetails += '<li>Participant is optional - try creating the encounter without it</li>';
+                errorDetails += '<li>Or use a valid Practitioner ID from this system</li>';
+                errorDetails += '</ul>';
+              } else if (errorMsgLower.includes('organization') || errorMsgLower.includes('serviceprovider')) {
+                errorDetails = '<br><br><strong>💡 Tips:</strong><ul style="margin: 10px 0; padding-left: 20px;">';
+                errorDetails += '<li><strong>The Organization ID does not exist in this system</strong></li>';
+                errorDetails += '<li>Try using <strong>Location</strong> instead</li>';
+                errorDetails += '<li>Or find a valid Organization ID by querying Organization resources</li>';
+                errorDetails += '</ul>';
+              }
+            }
+            
+            $result.removeClass('success').addClass('error')
+              .html('<i class="fas fa-exclamation-circle"></i> <strong>Error:</strong> ' + errorMsg + errorDetails)
+              .css({
+                'background-color': '#f8d7da',
+                'color': '#721c24',
+                'border': '1px solid #f5c6cb'
+              })
+              .show();
+            
+            $btn.prop('disabled', false).html(originalBtnText);
+            console.error('Error creating encounter:', error);
+          });
+        } else {
+          $result.removeClass('success').addClass('error')
+            .html('<i class="fas fa-exclamation-circle"></i> <strong>Error:</strong> createEncounter function not available. Please ensure the app is launched from an EHR.')
+            .css({
+              'background-color': '#f8d7da',
+              'color': '#721c24',
+              'border': '1px solid #f5c6cb'
+            })
+            .show();
+          
+          $btn.prop('disabled', false).html(originalBtnText);
+        }
+      });
+
+      // Store loaded encounter data
+      var loadedEncounter = null;
+
+      // Handle "Find Encounters" button
+      $('#find-encounters-btn').on('click', function() {
+        var $btn = $(this);
+        var $list = $('#encounters-list');
+        var originalText = $btn.html();
+        
+        $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Searching...');
+        $list.hide();
+        
+        if (typeof window.findAvailableEncounters === 'function') {
+          window.findAvailableEncounters(50).then(function(encounters) {
+            if (encounters.length > 0) {
+              var html = '<div style="background: #f8f9fa; padding: 10px; border-radius: 4px; max-height: 300px; overflow-y: auto;">';
+              html += '<strong>Available Encounters (' + encounters.length + '):</strong><ul style="margin: 5px 0; padding-left: 20px; list-style: none;">';
+              encounters.forEach(function(encounter) {
+                html += '<li style="margin: 8px 0; padding: 8px; background: white; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; transition: background 0.2s;" ';
+                html += 'onmouseover="this.style.background=\'#e7f3ff\'" onmouseout="this.style.background=\'white\'" ';
+                html += 'onclick="$(\'#encounter-id-input\').val(\'' + encounter.id + '\'); $(this).css(\'background\', \'#d4edda\'); setTimeout(function(){ $(\'#load-encounter-btn\').click(); }, 300);">';
+                html += '<div style="font-weight: 500; color: #007bff;">' + encounter.type + '</div>';
+                html += '<div style="font-size: 0.9em; color: #666; margin-top: 4px;">';
+                html += '<span style="margin-right: 10px;"><strong>Status:</strong> ' + encounter.status + '</span>';
+                html += '<span style="margin-right: 10px;"><strong>Date:</strong> ' + encounter.dateRange + '</span>';
+                if (encounter.reason !== 'N/A') {
+                  html += '<span><strong>Reason:</strong> ' + encounter.reason + '</span>';
+                }
+                html += '</div>';
+                html += '<div style="font-size: 0.85em; color: #999; margin-top: 4px;">ID: ' + encounter.id + '</div>';
+                html += '</li>';
+              });
+              html += '</ul></div>';
+              $list.html(html).show();
+            } else {
+              $list.html('<div style="color: #856404; background: #fff3cd; padding: 8px; border-radius: 4px;">No encounters found for this patient.</div>').show();
+            }
+            $btn.prop('disabled', false).html(originalText);
+          }).catch(function(error) {
+            $list.html('<div style="color: #721c24; background: #f8d7da; padding: 8px; border-radius: 4px;">Error: ' + (error.message || 'Failed to search') + '</div>').show();
+            $btn.prop('disabled', false).html(originalText);
+          });
+        } else {
+          $list.html('<div style="color: #721c24; background: #f8d7da; padding: 8px; border-radius: 4px;">Function not available. Please launch from an EHR.</div>').show();
+          $btn.prop('disabled', false).html(originalText);
+        }
+      });
+
+      // Handle "Load Encounter" button
+      $('#load-encounter-btn').on('click', function() {
+        var encounterId = $('#encounter-id-input').val().trim();
+        var $btn = $(this);
+        var originalText = $btn.html();
+        var $form = $('#update-encounter-form');
+        var $info = $('#loaded-encounter-info');
+        
+        if (!encounterId) {
+          alert('Please enter an Encounter ID');
+          return;
+        }
+        
+        $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Loading...');
+        $form.hide();
+        
+        if (typeof window.readEncounter === 'function') {
+          window.readEncounter(encounterId).then(function(encounter) {
+            loadedEncounter = encounter;
+            
+            // Display encounter info
+            var status = encounter.status || 'Unknown';
+            var type = 'N/A';
+            if (encounter.type && encounter.type[0]) {
+              type = encounter.type[0].text || 
+                     (encounter.type[0].coding && encounter.type[0].coding[0] && encounter.type[0].coding[0].display) ||
+                     'N/A';
+            }
+            var startDate = encounter.period?.start || 'N/A';
+            
+            $info.html('ID: ' + encounter.id + ' | Status: ' + status + ' | Type: ' + type + ' | Start: ' + startDate);
+            
+            // Populate form with existing values
+            $('#update-encounter-status').val(encounter.status || '');
+            
+            if (encounter.type && encounter.type[0] && encounter.type[0].coding && encounter.type[0].coding[0]) {
+              $('#update-encounter-type').val(encounter.type[0].coding[0].code || '');
+            }
+            
+            if (encounter.reasonCode && encounter.reasonCode[0]) {
+              var reason = encounter.reasonCode[0].text || 
+                          (encounter.reasonCode[0].coding && encounter.reasonCode[0].coding[0] && encounter.reasonCode[0].coding[0].code);
+              $('#update-encounter-reason').val(reason || '');
+            }
+            
+            if (encounter.period && encounter.period.start) {
+              // Convert ISO date to datetime-local format
+              var startDate = new Date(encounter.period.start);
+              var localStart = startDate.toISOString().slice(0, 16);
+              $('#update-encounter-start').val(localStart);
+            }
+            
+            if (encounter.period && encounter.period.end) {
+              var endDate = new Date(encounter.period.end);
+              var localEnd = endDate.toISOString().slice(0, 16);
+              $('#update-encounter-end').val(localEnd);
+            }
+            
+            $form.show();
+            $btn.prop('disabled', false).html(originalText);
+          }).catch(function(error) {
+            alert('Error loading encounter: ' + (error.message || 'Unknown error'));
+            $btn.prop('disabled', false).html(originalText);
+            console.error('Error loading encounter:', error);
+          });
+        } else {
+          alert('readEncounter function not available. Please ensure the app is launched from an EHR.');
+          $btn.prop('disabled', false).html(originalText);
+        }
+      });
+
+      // Handle "Cancel Update" button
+      $('#cancel-update-btn').on('click', function() {
+        $('#update-encounter-form').hide();
+        $('#encounter-id-input').val('');
+        loadedEncounter = null;
+        $('#update-encounter-result').hide();
+      });
+
+      // Handle update encounter form submission
+      $('#update-encounter-form').on('submit', function(e) {
+        e.preventDefault();
+        
+        if (!loadedEncounter || !loadedEncounter.id) {
+          alert('Please load an encounter first');
+          return;
+        }
+        
+        var $btn = $('#update-encounter-btn');
+        var $result = $('#update-encounter-result');
+        var originalBtnText = $btn.html();
+        
+        $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Updating...');
+        $result.hide();
+        
+        // Collect update data (only include fields that have values)
+        var updateData = {};
+        
+        var status = $('#update-encounter-status').val();
+        if (status) {
+          updateData.status = status;
+        }
+        
+        var type = $('#update-encounter-type').val();
+        if (type && type.trim() !== '') {
+          updateData.type = type.trim();
+          updateData.typeSystem = 'http://terminology.hl7.org/CodeSystem/v2-0004';
+        }
+        
+        var reason = $('#update-encounter-reason').val();
+        // Include reason even if empty (to allow clearing it)
+        updateData.reasonCode = reason ? reason.trim() : '';
+        
+        var startDate = $('#update-encounter-start').val();
+        if (startDate) {
+          updateData.startDate = new Date(startDate).toISOString();
+        }
+        
+        var endDate = $('#update-encounter-end').val();
+        // Include endDate even if empty (to allow clearing it)
+        updateData.endDate = endDate ? new Date(endDate).toISOString() : null;
+        
+        // Update encounter
+        if (typeof window.updateEncounter === 'function') {
+          window.updateEncounter(loadedEncounter.id, updateData).then(function(response) {
+            $result.removeClass('error').addClass('success')
+              .html('<i class="fas fa-check-circle"></i> <strong>Success!</strong> Encounter updated successfully.<br>' +
+                    '<small>ID: ' + (response.id || loadedEncounter.id) + '</small>')
+              .css({
+                'background-color': '#d4edda',
+                'color': '#155724',
+                'border': '1px solid #c3e6cb'
+              })
+              .show();
+            
+            // Reload the encounter to show updated values
+            $('#load-encounter-btn').click();
+            
+            $btn.prop('disabled', false).html(originalBtnText);
+          }).catch(function(error) {
+            var errorMsg = error.message || error.statusText || 'Unknown error occurred';
+            if (error.responseJSON && error.responseJSON.issue) {
+              errorMsg = error.responseJSON.issue.map(function(i) {
+                return i.details?.text || i.diagnostics || errorMsg;
+              }).join('<br>');
+            }
+            
+            $result.removeClass('success').addClass('error')
+              .html('<i class="fas fa-exclamation-circle"></i> <strong>Error:</strong> ' + errorMsg)
+              .css({
+                'background-color': '#f8d7da',
+                'color': '#721c24',
+                'border': '1px solid #f5c6cb'
+              })
+              .show();
+            
+            $btn.prop('disabled', false).html(originalBtnText);
+            console.error('Error updating encounter:', error);
+          });
+        } else {
+          $result.removeClass('success').addClass('error')
+            .html('<i class="fas fa-exclamation-circle"></i> <strong>Error:</strong> updateEncounter function not available.')
+            .css({
+              'background-color': '#f8d7da',
+              'color': '#721c24',
+              'border': '1px solid #f5c6cb'
+            })
+            .show();
+          
+          $btn.prop('disabled', false).html(originalBtnText);
+        }
+      });
     </script>
   </body>
 </html>

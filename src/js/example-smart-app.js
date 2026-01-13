@@ -1,4 +1,14 @@
 (function(window){
+  // CORS Proxy configuration - DISABLED
+  var USE_PROXY = false;  // Set to false to disable proxy
+  var PROXY_URL = 'http://localhost:8081/';  // CORS proxy endpoint (not used when disabled)
+  
+  // Helper function to wrap URLs with proxy
+  function wrapWithProxy(url) {
+    // Proxy is disabled - return URL as-is
+    return url;
+  }
+  
   // Helper function to convert text to sentence case
   function toSentenceCase(text) {
     if (!text || typeof text !== 'string') return text;
@@ -46,7 +56,7 @@
     console.log('Getting encounter ID from FHIR client context...');
     console.log('smart object:', smart);
     console.log('smart.state:', smart.state);
-    console.log('smart.state.tokenResponse:', smart.state?.tokenResponse);
+    console.log('smart.state.tokenResponse:', smart.state && smart.state.tokenResponse);
     console.log('FHIR Server URL:', smart.state.serverUrl);
     console.log('Expected ISS from launch:', window.location.search);
     
@@ -60,13 +70,13 @@
     }
     
     // Method 2: From token response
-    if (!encounterId && smart.state?.tokenResponse?.encounter) {
+    if (!encounterId && smart.state && smart.state.tokenResponse && smart.state.tokenResponse.encounter) {
       encounterId = smart.state.tokenResponse.encounter;
       console.log('Encounter ID from tokenResponse.encounter:', encounterId);
     }
     
     // Method 3: From launch context
-    if (!encounterId && smart.state?.tokenResponse?.launch) {
+    if (!encounterId && smart.state && smart.state.tokenResponse && smart.state.tokenResponse.launch) {
       // The launch parameter might contain encounter info
       console.log('Launch parameter:', smart.state.tokenResponse.launch);
     }
@@ -81,6 +91,957 @@
     return encounterId;
   }
 
+
+  // Global variable to store SMART client for write operations
+  window.smartClient = null;
+
+  /**
+   * Read an existing Encounter by ID
+   * @param {string} encounterId - The ID of the encounter to read
+   * @returns {Promise} Promise that resolves with the encounter resource
+   */
+  window.readEncounter = function(encounterId) {
+    if (!window.smartClient) {
+      return Promise.reject(new Error('SMART client not initialized. Please launch the app from an EHR.'));
+    }
+
+    var smart = window.smartClient;
+    var url = smart.state.serverUrl + '/Encounter/' + encounterId;
+    var wrappedUrl = wrapWithProxy(url);
+
+    console.log('Reading encounter:', encounterId);
+    console.log('URL:', wrappedUrl);
+
+    // Get access token
+    var accessToken = null;
+    if (smart.state && smart.state.tokenResponse) {
+      if (smart.state.tokenResponse.access_token) {
+        accessToken = smart.state.tokenResponse.access_token;
+      } else if (smart.state.tokenResponse.tokenResponse && smart.state.tokenResponse.tokenResponse.access_token) {
+        accessToken = smart.state.tokenResponse.tokenResponse.access_token;
+      }
+    }
+
+    return fetch(wrappedUrl, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/fhir+json',
+        'Authorization': accessToken ? 'Bearer ' + accessToken : ''
+      }
+    })
+    .then(function(response) {
+      if (!response.ok) {
+        throw new Error('Failed to read encounter: ' + response.status + ' ' + response.statusText);
+      }
+      return response.json();
+    })
+    .then(function(data) {
+      console.log('Encounter read successfully:', data);
+      return data;
+    });
+  };
+
+  /**
+   * Update an existing Encounter (full update using PUT)
+   * @param {string} encounterId - The ID of the encounter to update
+   * @param {Object} encounterData - Updated encounter data (same structure as createEncounter)
+   * @returns {Promise} Promise that resolves with the updated encounter
+   */
+  window.updateEncounter = function(encounterId, encounterData) {
+    if (!window.smartClient) {
+      return Promise.reject(new Error('SMART client not initialized. Please launch the app from an EHR.'));
+    }
+
+    // First, read the existing encounter to get the current version
+    return window.readEncounter(encounterId).then(function(existingEncounter) {
+      console.log('Existing encounter:', existingEncounter);
+      
+      // Build the updated encounter by merging existing data with new data
+      // We'll use the same logic as createEncounter but merge with existing
+      var smart = window.smartClient;
+      var patientId = existingEncounter.subject?.reference?.replace('Patient/', '') || smart.patient.id;
+      
+      // Use existing encounter as base, then apply updates
+      var updatedEncounter = JSON.parse(JSON.stringify(existingEncounter));
+      
+      // Update status if provided
+      if (encounterData.status) {
+        updatedEncounter.status = encounterData.status;
+      }
+      
+      // Update period if provided
+      if (encounterData.startDate) {
+        if (!updatedEncounter.period) {
+          updatedEncounter.period = {};
+        }
+        updatedEncounter.period.start = encounterData.startDate;
+      }
+      if (encounterData.endDate !== undefined) {
+        if (!updatedEncounter.period) {
+          updatedEncounter.period = {};
+        }
+        if (encounterData.endDate) {
+          updatedEncounter.period.end = encounterData.endDate;
+        } else {
+          delete updatedEncounter.period.end;
+        }
+      }
+      
+      // Update type if provided
+      if (encounterData.type && encounterData.type.trim() !== '') {
+        var encounterType = encounterData.type.trim();
+        var typeSystem = encounterData.typeSystem || 'http://terminology.hl7.org/CodeSystem/v2-0004';
+        var typeDisplay = encounterData.typeDisplay;
+        
+        var typeDisplayMap = {
+          'O': 'Outpatient',
+          'I': 'Inpatient',
+          'E': 'Emergency',
+          'P': 'Pre-admit',
+          'R': 'Recurring patient',
+          'B': 'Obstetrics',
+          'C': 'Commercial Account',
+          'N': 'Not Applicable',
+          'U': 'Unknown'
+        };
+        
+        var finalTypeDisplay = typeDisplay || typeDisplayMap[encounterType] || encounterType;
+        
+        updatedEncounter.type = [{
+          coding: [{
+            system: typeSystem,
+            code: encounterType,
+            display: finalTypeDisplay
+          }],
+          text: finalTypeDisplay
+        }];
+      }
+      
+      // Update reasonCode if provided
+      if (encounterData.reasonCode !== undefined) {
+        if (encounterData.reasonCode && encounterData.reasonCode.trim() !== '') {
+          var reasonCode = encounterData.reasonCode.trim();
+          var reasonDisplay = encounterData.reasonDisplay || reasonCode;
+          
+          if (/^\d+$/.test(reasonCode)) {
+            updatedEncounter.reasonCode = [{
+              coding: [{
+                system: 'http://snomed.info/sct',
+                code: reasonCode,
+                display: reasonDisplay
+              }],
+              text: reasonDisplay
+            }];
+          } else {
+            var reasonCodeObj = { text: reasonCode };
+            if (/^[A-Z]\d{2}/.test(reasonCode)) {
+              reasonCodeObj.coding = [{
+                system: 'http://hl7.org/fhir/sid/icd-10',
+                code: reasonCode,
+                display: reasonDisplay
+              }];
+            }
+            updatedEncounter.reasonCode = [reasonCodeObj];
+          }
+        } else {
+          // Remove reasonCode if empty string provided
+          delete updatedEncounter.reasonCode;
+        }
+      }
+      
+      // Update location if provided
+      if (encounterData.location !== undefined) {
+        if (encounterData.location && encounterData.location.trim() !== '') {
+          var locationRef = encounterData.location.trim();
+          if (/^\d+$/.test(locationRef)) {
+            locationRef = 'Location/' + locationRef;
+          } else if (!locationRef.startsWith('Location/')) {
+            locationRef = 'Location/' + locationRef;
+          }
+          updatedEncounter.location = [{
+            location: {
+              reference: locationRef
+            }
+          }];
+          // Remove serviceProvider if location is set (they're mutually exclusive)
+          delete updatedEncounter.serviceProvider;
+        } else {
+          delete updatedEncounter.location;
+        }
+      }
+      
+      // Update serviceProvider if provided
+      if (encounterData.serviceProvider !== undefined) {
+        if (encounterData.serviceProvider && encounterData.serviceProvider.trim() !== '') {
+          var serviceProviderRef = encounterData.serviceProvider.trim();
+          if (/^\d+$/.test(serviceProviderRef)) {
+            serviceProviderRef = 'Organization/' + serviceProviderRef;
+          } else if (!serviceProviderRef.startsWith('Organization/')) {
+            serviceProviderRef = 'Organization/' + serviceProviderRef;
+          }
+          updatedEncounter.serviceProvider = {
+            reference: serviceProviderRef
+          };
+          // Remove location if serviceProvider is set (they're mutually exclusive)
+          delete updatedEncounter.location;
+        } else {
+          delete updatedEncounter.serviceProvider;
+        }
+      }
+      
+      // Now perform the PUT update
+      var url = smart.state.serverUrl + '/Encounter/' + encounterId;
+      var wrappedUrl = wrapWithProxy(url);
+      
+      // Get access token
+      var accessToken = null;
+      if (smart.state && smart.state.tokenResponse) {
+        if (smart.state.tokenResponse.access_token) {
+          accessToken = smart.state.tokenResponse.access_token;
+        } else if (smart.state.tokenResponse.tokenResponse && smart.state.tokenResponse.tokenResponse.access_token) {
+          accessToken = smart.state.tokenResponse.tokenResponse.access_token;
+        }
+      }
+      
+      console.log('=== UPDATING ENCOUNTER ===');
+      console.log('Encounter ID:', encounterId);
+      console.log('Updated encounter:', JSON.stringify(updatedEncounter, null, 2));
+      
+      return fetch(wrappedUrl, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/fhir+json',
+          'Accept': 'application/fhir+json',
+          'Authorization': accessToken ? 'Bearer ' + accessToken : '',
+          'If-Match': existingEncounter.meta?.versionId || '*'
+        },
+        body: JSON.stringify(updatedEncounter)
+      })
+      .then(function(response) {
+        return response.text().then(function(text) {
+          var data;
+          try {
+            data = JSON.parse(text);
+          } catch (e) {
+            data = { raw: text };
+          }
+          
+          if (!response.ok) {
+            var error = new Error('Failed to update encounter: ' + response.status + ' ' + response.statusText);
+            error.status = response.status;
+            error.statusText = response.statusText;
+            error.responseJSON = data;
+            throw error;
+          }
+          
+          console.log('Encounter updated successfully:', data);
+          return data;
+        });
+      });
+    });
+  };
+
+  /**
+   * Helper function to find available Location or Organization resources
+   * Useful for finding valid IDs to use when creating encounters
+   * @param {string} resourceType - 'Location' or 'Organization'
+   * @returns {Promise} Promise that resolves with available resources
+   */
+  window.findAvailableResources = function(resourceType) {
+    if (!window.smartClient) {
+      return Promise.reject(new Error('SMART client not initialized. Please launch the app from an EHR.'));
+    }
+
+    var smart = window.smartClient;
+    var url = smart.state.serverUrl + '/' + resourceType + '?_count=20';
+    var wrappedUrl = wrapWithProxy(url);
+
+    console.log('Searching for available ' + resourceType + ' resources...');
+
+    return fetch(wrappedUrl, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/fhir+json',
+        'Authorization': 'Bearer ' + (smart.state.tokenResponse?.access_token || '')
+      }
+    })
+    .then(function(response) {
+      return response.json().then(function(data) {
+        if (data.entry && data.entry.length > 0) {
+          var resources = data.entry.map(function(entry) {
+            var resource = entry.resource;
+            return {
+              id: resource.id,
+              reference: resourceType + '/' + resource.id,
+              name: resource.name || resource.address?.text || resource.id,
+              display: (resource.name || resource.address?.text || resource.id) + ' (' + resource.id + ')'
+            };
+          });
+          console.log('Found ' + resources.length + ' ' + resourceType + ' resources:', resources);
+          return resources;
+        } else {
+          console.log('No ' + resourceType + ' resources found');
+          return [];
+        }
+      });
+    })
+    .catch(function(error) {
+      console.error('Error searching for ' + resourceType + ' resources:', error);
+      throw error;
+    });
+  };
+
+  /**
+   * Helper function to find available Encounters for the current patient
+   * @param {number} count - Maximum number of encounters to return (default: 50)
+   * @returns {Promise} Promise that resolves with available encounters
+   */
+  window.findAvailableEncounters = function(count) {
+    if (!window.smartClient) {
+      return Promise.reject(new Error('SMART client not initialized. Please launch the app from an EHR.'));
+    }
+
+    var smart = window.smartClient;
+    var patientId = smart.patient.id;
+    var maxCount = count || 50;
+    var url = smart.state.serverUrl + '/Encounter?patient=' + patientId + '&_count=' + maxCount + '&_sort=-date';
+    var wrappedUrl = wrapWithProxy(url);
+
+    console.log('Searching for available encounters for patient:', patientId);
+
+    // Get access token
+    var accessToken = null;
+    if (smart.state && smart.state.tokenResponse) {
+      if (smart.state.tokenResponse.access_token) {
+        accessToken = smart.state.tokenResponse.access_token;
+      } else if (smart.state.tokenResponse.tokenResponse && smart.state.tokenResponse.tokenResponse.access_token) {
+        accessToken = smart.state.tokenResponse.tokenResponse.access_token;
+      }
+    }
+
+    return fetch(wrappedUrl, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/fhir+json',
+        'Authorization': accessToken ? 'Bearer ' + accessToken : ''
+      }
+    })
+    .then(function(response) {
+      if (!response.ok) {
+        throw new Error('Failed to search encounters: ' + response.status + ' ' + response.statusText);
+      }
+      return response.json();
+    })
+    .then(function(data) {
+      if (data.entry && data.entry.length > 0) {
+        var encounters = data.entry.map(function(entry) {
+          var encounter = entry.resource;
+          
+          // Extract encounter details
+          var type = 'N/A';
+          if (encounter.type && encounter.type[0]) {
+            type = encounter.type[0].text || 
+                   (encounter.type[0].coding && encounter.type[0].coding[0] && encounter.type[0].coding[0].display) ||
+                   (encounter.type[0].coding && encounter.type[0].coding[0] && encounter.type[0].coding[0].code) ||
+                   'N/A';
+          }
+          
+          var status = encounter.status || 'Unknown';
+          
+          var dateRange = 'N/A';
+          if (encounter.period) {
+            var start = encounter.period.start ? new Date(encounter.period.start).toLocaleDateString() : '';
+            var end = encounter.period.end ? new Date(encounter.period.end).toLocaleDateString() : '';
+            if (start && end) {
+              dateRange = start + ' to ' + end;
+            } else if (start) {
+              dateRange = 'From ' + start;
+            }
+          }
+          
+          var reason = 'N/A';
+          if (encounter.reasonCode && encounter.reasonCode[0]) {
+            reason = encounter.reasonCode[0].text || 
+                    (encounter.reasonCode[0].coding && encounter.reasonCode[0].coding[0] && encounter.reasonCode[0].coding[0].display) ||
+                    'N/A';
+          }
+          
+          return {
+            id: encounter.id,
+            type: type,
+            status: status,
+            dateRange: dateRange,
+            reason: reason,
+            display: type + ' | ' + status + ' | ' + dateRange + ' (ID: ' + encounter.id + ')'
+          };
+        });
+        console.log('Found ' + encounters.length + ' encounters:', encounters);
+        return encounters;
+      } else {
+        console.log('No encounters found');
+        return [];
+      }
+    })
+    .catch(function(error) {
+      console.error('Error searching for encounters:', error);
+      throw error;
+    });
+  };
+
+  /**
+   * Create a new Encounter resource in the EHR
+   * @param {Object} encounterData - Encounter data object
+   * @param {string} encounterData.status - Encounter status (e.g., 'planned', 'arrived', 'in-progress', 'finished', 'cancelled')
+   * @param {string} encounterData.class - Encounter class code (e.g., 'AMB', 'EMER', 'IMP', 'OBSENC', 'PRENC', 'SS', 'VR')
+   * @param {string} encounterData.type - Encounter type code (e.g., 'AMB', 'EMER', 'IMP')
+   * @param {string} encounterData.reasonCode - Reason for encounter (optional)
+   * @param {string} encounterData.startDate - Start date/time in ISO format (optional)
+   * @param {string} encounterData.endDate - End date/time in ISO format (optional)
+   * @returns {Promise} Promise that resolves with the created encounter or rejects with error
+   */
+  window.createEncounter = function(encounterData) {
+    if (!window.smartClient) {
+      return Promise.reject(new Error('SMART client not initialized. Please launch the app from an EHR.'));
+    }
+
+    var smart = window.smartClient;
+    var patientId = smart.patient.id;
+    var fhirVersion = smart.state.serverUrl.includes('/r2/') ? 'R2' : 'R4';
+
+    // Build the Encounter resource according to FHIR R4 specification
+    // Cerner requires period with start date at minimum
+    var now = new Date();
+    var startDate = encounterData.startDate;
+    
+    // Ensure startDate is in proper ISO 8601 format with time
+    if (startDate) {
+      // If it's already a string, validate it's ISO format
+      if (typeof startDate === 'string') {
+        // If it doesn't have time component, add it
+        if (startDate.indexOf('T') === -1) {
+          startDate = startDate + 'T00:00:00Z';
+        }
+        // Ensure it ends with Z or timezone
+        if (!startDate.endsWith('Z') && !startDate.match(/[+-]\d{2}:\d{2}$/)) {
+          startDate = startDate + 'Z';
+        }
+      } else {
+        // If it's a Date object, convert to ISO string
+        startDate = new Date(startDate).toISOString();
+      }
+    } else {
+      // Default to current time
+      startDate = now.toISOString();
+    }
+    
+    var endDate = encounterData.endDate || null;
+    if (endDate) {
+      // Ensure endDate is in proper ISO 8601 format
+      if (typeof endDate === 'string') {
+        if (endDate.indexOf('T') === -1) {
+          endDate = endDate + 'T00:00:00Z';
+        }
+        if (!endDate.endsWith('Z') && !endDate.match(/[+-]\d{2}:\d{2}$/)) {
+          endDate = endDate + 'Z';
+        }
+      } else {
+        endDate = new Date(endDate).toISOString();
+      }
+    }
+
+    // According to Cerner documentation:
+    // - class field cannot be written directly (it's inferred)
+    // - location OR serviceProvider is REQUIRED (one or the other, not both)
+    // - period with start date is required
+    // Cerner documentation example uses "in-progress" status
+    // Note: "cancelled" and "entered-in-error" are not supported per Cerner docs
+    var encounterStatus = encounterData.status || 'in-progress';
+    
+    // Validate status - Cerner doesn't support "cancelled" or "entered-in-error" for creation
+    if (encounterStatus === 'cancelled' || encounterStatus === 'entered-in-error') {
+      console.warn('Status "' + encounterStatus + '" is not supported by Cerner for encounter creation. Using "in-progress" instead.');
+      encounterStatus = 'in-progress';
+    }
+    
+    var encounter = {
+      resourceType: 'Encounter',
+      status: encounterStatus,
+      // Period is required by Cerner - always include it with start date
+      period: {
+        start: startDate
+      },
+      subject: {
+        reference: 'Patient/' + patientId
+      }
+    };
+    
+    // Note: class field is NOT included - Cerner docs say "Direct writing of class is not supported. 
+    // This field is inferred on a write."
+
+    // Add end date if provided
+    if (endDate) {
+      encounter.period.end = endDate;
+    }
+
+    // Add type - Only include if explicitly provided with a valid coding system
+    // Cerner supports HL7 V2 Code System: http://terminology.hl7.org/CodeSystem/v2-0004
+    // Common codes: O (Outpatient), I (Inpatient), E (Emergency), etc.
+    // Note: The 'class' field may be sufficient, so type is optional
+    if (encounterData.type && encounterData.type.trim() !== '') {
+      var encounterType = encounterData.type.trim();
+      var typeSystem = encounterData.typeSystem || 'http://terminology.hl7.org/CodeSystem/v2-0004';
+      var typeDisplay = encounterData.typeDisplay;
+      
+      // Map common class codes to HL7 V2 codes if needed
+      if (!typeDisplay) {
+        var typeMap = {
+          'AMB': 'O',  // Ambulatory -> Outpatient
+          'EMER': 'E', // Emergency
+          'IMP': 'I',  // Inpatient
+          'OBSENC': 'O', // Observation -> Outpatient
+          'PRENC': 'P', // Pre-admission
+          'SS': 'O',   // Short stay -> Outpatient
+          'VR': 'O'    // Virtual -> Outpatient
+        };
+        // If the type looks like a class code, try to map it
+        if (typeMap[encounterType]) {
+          encounterType = typeMap[encounterType];
+          typeSystem = 'http://terminology.hl7.org/CodeSystem/v2-0004';
+        }
+      }
+      
+      // Get proper display name for HL7 V2 codes
+      var typeDisplayMap = {
+        'O': 'Outpatient',
+        'I': 'Inpatient',
+        'E': 'Emergency',
+        'P': 'Pre-admit',
+        'R': 'Recurring patient',
+        'B': 'Obstetrics',
+        'C': 'Commercial Account',
+        'N': 'Not Applicable',
+        'U': 'Unknown'
+      };
+      
+      var finalTypeDisplay = typeDisplay || typeDisplayMap[encounterType] || getClassDisplay(encounterType);
+      
+      // According to FHIR spec, type should have both coding and text for better display
+      encounter.type = [{
+        coding: [{
+          system: typeSystem,
+          code: encounterType,
+          display: finalTypeDisplay
+        }],
+        text: finalTypeDisplay  // Add text field for better display in EHR systems
+      }];
+    }
+
+    // Add reason code if provided
+    // According to Cerner docs: "ICD-10 and SNOMED codes with text fields are supported"
+    // So we should include both coding and text for best compatibility
+    if (encounterData.reasonCode && encounterData.reasonCode.trim() !== '') {
+      var reasonCode = encounterData.reasonCode.trim();
+      var reasonDisplay = encounterData.reasonDisplay || reasonCode;
+      
+      // SNOMED CT codes are numeric - if numeric, use SNOMED coding
+      if (/^\d+$/.test(reasonCode)) {
+        // Valid SNOMED CT numeric code - include both coding and text
+        encounter.reasonCode = [{
+          coding: [{
+            system: 'http://snomed.info/sct',
+            code: reasonCode,
+            display: reasonDisplay
+          }],
+          text: reasonDisplay  // Also include text for better display
+        }];
+      } else {
+        // Not a valid SNOMED code - use text field (per Cerner docs, text is supported)
+        // But also try to include it as a coding if it looks like an ICD-10 code
+        var reasonCodeObj = {
+          text: reasonCode  // Always include text
+        };
+        
+        // If it looks like an ICD-10 code (starts with letter and has numbers), add coding
+        if (/^[A-Z]\d{2}/.test(reasonCode)) {
+          reasonCodeObj.coding = [{
+            system: 'http://hl7.org/fhir/sid/icd-10',
+            code: reasonCode,
+            display: reasonDisplay
+          }];
+        }
+        
+        encounter.reasonCode = [reasonCodeObj];
+      }
+    }
+
+    // According to Cerner docs: location OR serviceProvider is REQUIRED
+    // Only one is permitted - cannot provide both
+    // If location is provided, use it; otherwise use serviceProvider
+    if (encounterData.location) {
+      // Normalize location reference format
+      var locationRef = encounterData.location.trim();
+      // If user entered just an ID (numbers only), prepend "Location/"
+      if (/^\d+$/.test(locationRef)) {
+        locationRef = 'Location/' + locationRef;
+      } else if (!locationRef.startsWith('Location/')) {
+        // If it doesn't start with Location/, add it
+        locationRef = 'Location/' + locationRef;
+      }
+      
+      console.log('Location reference (normalized):', locationRef);
+      
+      encounter.location = [{
+        location: {
+          reference: locationRef
+        }
+      }];
+    } else if (encounterData.serviceProvider) {
+      // Normalize serviceProvider reference format
+      var serviceProviderRef = encounterData.serviceProvider.trim();
+      // If user entered just an ID (numbers only), prepend "Organization/"
+      if (/^\d+$/.test(serviceProviderRef)) {
+        serviceProviderRef = 'Organization/' + serviceProviderRef;
+      } else if (!serviceProviderRef.startsWith('Organization/')) {
+        // If it doesn't start with Organization/, add it
+        serviceProviderRef = 'Organization/' + serviceProviderRef;
+      }
+      
+      console.log('ServiceProvider reference (normalized):', serviceProviderRef);
+      
+      // Use serviceProvider if location not provided
+      encounter.serviceProvider = {
+        reference: serviceProviderRef
+      };
+    } else {
+      // If neither provided, this is a critical error - Cerner requires one of these
+      var errorMsg = 'ERROR: Either location OR serviceProvider is REQUIRED by Cerner. Please provide one of these fields.';
+      console.error('=== VALIDATION ERROR ===');
+      console.error(errorMsg);
+      return Promise.reject(new Error(errorMsg));
+    }
+
+    // Participant is OPTIONAL per Cerner docs - only add if explicitly provided
+    // We don't auto-add it from token because the Practitioner ID might not exist
+    var participantRef = null;
+    
+    // Only use participant if explicitly provided in encounter data
+    if (encounterData.practitioner && encounterData.practitioner.trim() !== '') {
+      participantRef = encounterData.practitioner.trim();
+    }
+    
+    // Only add participant if we have a valid, properly formatted reference
+    // Note: We skip auto-adding from token to avoid "not found" errors
+    if (participantRef) {
+      // Normalize participant reference format
+      // Must be Practitioner/ID or RelatedPerson/ID
+      var normalizedParticipantRef = participantRef.trim();
+      
+      // Remove any URL prefix if present (e.g., "https://fhir-ehr-code.cerner.com/r4/.../Practitioner/123")
+      if (normalizedParticipantRef.includes('/Practitioner/')) {
+        var parts = normalizedParticipantRef.split('/Practitioner/');
+        normalizedParticipantRef = 'Practitioner/' + parts[parts.length - 1];
+      } else if (normalizedParticipantRef.includes('/RelatedPerson/')) {
+        var parts = normalizedParticipantRef.split('/RelatedPerson/');
+        normalizedParticipantRef = 'RelatedPerson/' + parts[parts.length - 1];
+      }
+      // If it's just a number, assume it's a Practitioner
+      else if (/^\d+$/.test(normalizedParticipantRef)) {
+        normalizedParticipantRef = 'Practitioner/' + normalizedParticipantRef;
+      } 
+      // If it doesn't start with Practitioner/ or RelatedPerson/, try to fix it
+      else if (!normalizedParticipantRef.startsWith('Practitioner/') && 
+               !normalizedParticipantRef.startsWith('RelatedPerson/')) {
+        // If it has a slash but wrong prefix, try to extract the ID
+        if (normalizedParticipantRef.includes('/')) {
+          var parts = normalizedParticipantRef.split('/');
+          if (parts.length >= 2) {
+            // Take the last part as the ID and assume Practitioner
+            normalizedParticipantRef = 'Practitioner/' + parts[parts.length - 1];
+          } else {
+            normalizedParticipantRef = 'Practitioner/' + normalizedParticipantRef;
+          }
+        } else {
+          normalizedParticipantRef = 'Practitioner/' + normalizedParticipantRef;
+        }
+      }
+      
+      console.log('Participant reference (normalized):', normalizedParticipantRef);
+      
+      // Only add if it's properly formatted
+      if (normalizedParticipantRef.startsWith('Practitioner/') || 
+          normalizedParticipantRef.startsWith('RelatedPerson/')) {
+        encounter.participant = [{
+          type: [{
+            coding: [{
+              system: 'http://terminology.hl7.org/CodeSystem/v3-ParticipationType',
+              code: 'ATND',
+              display: 'attending'
+            }]
+          }],
+          individual: {
+            reference: normalizedParticipantRef
+          }
+        }];
+      } else {
+        console.warn('Skipping participant - reference format is invalid:', normalizedParticipantRef);
+        console.warn('Participant is optional per Cerner docs, so continuing without it');
+      }
+    } else {
+      console.log('No participant provided - this is optional per Cerner docs');
+    }
+
+    // Validate required fields before sending
+    var validationErrors = [];
+    if (!encounter.resourceType) {
+      validationErrors.push('resourceType is required');
+    }
+    if (!encounter.status) {
+      validationErrors.push('status is required');
+    }
+    if (!encounter.period || !encounter.period.start) {
+      validationErrors.push('period.start is required');
+    }
+    if (!encounter.subject || !encounter.subject.reference) {
+      validationErrors.push('subject is required');
+    }
+    if (!encounter.location && !encounter.serviceProvider) {
+      validationErrors.push('location OR serviceProvider is required');
+    }
+    
+    if (validationErrors.length > 0) {
+      var errorMsg = 'Validation failed: ' + validationErrors.join(', ');
+      console.error('=== VALIDATION ERROR ===');
+      console.error(errorMsg);
+      console.error('Encounter object:', encounter);
+      return Promise.reject(new Error(errorMsg));
+    }
+
+    console.log('=== ENCOUNTER CREATION DEBUG ===');
+    console.log('Creating encounter:', JSON.stringify(encounter, null, 2));
+    console.log('Patient ID:', patientId);
+    console.log('FHIR Version:', fhirVersion);
+    console.log('Participant included:', !!encounter.participant);
+    console.log('Location included:', !!encounter.location);
+    console.log('ServiceProvider included:', !!encounter.serviceProvider);
+    console.log('Period start:', encounter.period.start);
+    console.log('Period end:', encounter.period.end || 'not set');
+
+    // Build the URL
+    var url = smart.state.serverUrl + '/Encounter';
+    var wrappedUrl = wrapWithProxy(url);
+
+    console.log('POST URL:', wrappedUrl);
+    console.log('Full request body (stringified):', JSON.stringify(encounter));
+    console.log('Request body size:', JSON.stringify(encounter).length, 'bytes');
+
+    // Get access token from smart client - try multiple locations
+    var accessToken = null;
+    if (smart.state && smart.state.tokenResponse) {
+      if (smart.state.tokenResponse.access_token) {
+        accessToken = smart.state.tokenResponse.access_token;
+      } else if (smart.state.tokenResponse.tokenResponse && smart.state.tokenResponse.tokenResponse.access_token) {
+        accessToken = smart.state.tokenResponse.tokenResponse.access_token;
+      }
+    }
+    
+    // Also try to get from the API's auth object if available
+    if (!accessToken && smart.api && smart.api.state && smart.api.state.tokenResponse) {
+      accessToken = smart.api.state.tokenResponse.access_token;
+    }
+
+    console.log('Access token available:', !!accessToken);
+    if (!accessToken) {
+      console.warn('WARNING: No access token found. Request may fail.');
+    }
+
+    // Clean up the encounter object - remove any undefined or null values that might cause issues
+    var cleanEncounter = JSON.parse(JSON.stringify(encounter));
+    
+    console.log('Cleaned encounter (no undefined/null):', JSON.stringify(cleanEncounter, null, 2));
+    
+    // Log the exact request that will be sent
+    var requestBody = JSON.stringify(cleanEncounter);
+    var requestHeaders = {
+      'Content-Type': 'application/fhir+json',
+      'Accept': 'application/fhir+json',
+      'Authorization': accessToken ? 'Bearer ' + (accessToken.substring(0, 20) + '...') : 'NOT SET'
+    };
+    
+    console.log('=== REQUEST DETAILS ===');
+    console.log('Method: POST');
+    console.log('URL:', wrappedUrl);
+    console.log('Headers:', requestHeaders);
+    console.log('Body:', requestBody);
+    console.log('Body length:', requestBody.length, 'bytes');
+    
+    // Compare with Cerner's example structure
+    console.log('=== STRUCTURE CHECK ===');
+    console.log('Has resourceType:', !!cleanEncounter.resourceType, '=', cleanEncounter.resourceType);
+    console.log('Has status:', !!cleanEncounter.status, '=', cleanEncounter.status);
+    console.log('Has period:', !!cleanEncounter.period);
+    console.log('Has period.start:', !!(cleanEncounter.period && cleanEncounter.period.start), '=', cleanEncounter.period?.start);
+    console.log('Has subject:', !!cleanEncounter.subject);
+    console.log('Has subject.reference:', !!(cleanEncounter.subject && cleanEncounter.subject.reference), '=', cleanEncounter.subject?.reference);
+    console.log('Has location:', !!cleanEncounter.location, '=', JSON.stringify(cleanEncounter.location));
+    console.log('Has serviceProvider:', !!cleanEncounter.serviceProvider, '=', JSON.stringify(cleanEncounter.serviceProvider));
+    console.log('Has type:', !!cleanEncounter.type);
+    console.log('Has participant:', !!cleanEncounter.participant);
+    console.log('Has reasonCode:', !!cleanEncounter.reasonCode);
+
+    // Use fetch API with proper authentication
+    return fetch(wrappedUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/fhir+json',
+        'Accept': 'application/fhir+json',
+        'Authorization': accessToken ? 'Bearer ' + accessToken : ''
+      },
+      body: requestBody
+    })
+    .then(function(response) {
+      console.log('=== RESPONSE RECEIVED ===');
+      console.log('Response status:', response.status);
+      console.log('Response status text:', response.statusText);
+      console.log('Response headers:', Array.from(response.headers.entries()));
+      
+      return response.text().then(function(text) {
+        console.log('Response body (raw):', text);
+        
+        var data;
+        try {
+          data = JSON.parse(text);
+          console.log('Response body (parsed):', JSON.stringify(data, null, 2));
+        } catch (e) {
+          console.warn('Failed to parse response as JSON:', e);
+          data = { raw: text };
+        }
+        
+        if (!response.ok) {
+          console.error('=== ERROR RESPONSE DETAILS ===');
+          console.error('Status:', response.status, response.statusText);
+          console.error('OperationOutcome:', JSON.stringify(data, null, 2));
+          
+          var error = new Error('Failed to create encounter: ' + response.status + ' ' + response.statusText);
+          error.status = response.status;
+          error.statusText = response.statusText;
+          error.responseJSON = data;
+          
+          // Extract detailed error messages
+          if (data.issue && data.issue.length > 0) {
+            var errorMessages = [];
+            data.issue.forEach(function(issue) {
+              var msg = '';
+              if (issue.details && issue.details.text) {
+                msg = issue.details.text;
+              }
+              if (issue.diagnostics) {
+                msg += (msg ? ' - ' : '') + issue.diagnostics;
+              }
+              if (issue.expression && issue.expression.length > 0) {
+                msg += (msg ? ' (Field: ' : 'Field: ') + issue.expression.join(', ') + ')';
+              }
+              if (issue.location && issue.location.length > 0) {
+                msg += (msg ? ' (Location: ' : 'Location: ') + issue.location.join(', ') + ')';
+              }
+              if (msg) {
+                errorMessages.push(msg);
+              }
+            });
+            if (errorMessages.length > 0) {
+              error.message = errorMessages.join('; ');
+              
+              // Add helpful suggestions for common errors
+              var fullErrorMsg = error.message.toLowerCase();
+              if (fullErrorMsg.includes('location') && (fullErrorMsg.includes('not found') || fullErrorMsg.includes('not supported'))) {
+                error.message += '\n\n💡 Tip: The Location ID does not exist in this system.';
+                error.message += '\n   • Try using Service Provider (Organization) instead';
+                error.message += '\n   • Or find a valid Location ID by querying Location resources';
+                error.message += '\n   • Note: Example IDs from Cerner docs may not work in SMART Health IT sandbox';
+              } else if (fullErrorMsg.includes('practitioner') && (fullErrorMsg.includes('not found') || fullErrorMsg.includes('not supported'))) {
+                error.message += '\n\n💡 Tip: The Practitioner ID does not exist in this system.';
+                error.message += '\n   • Participant is optional - try creating the encounter without it';
+                error.message += '\n   • Or use a valid Practitioner ID from this system';
+              } else if (fullErrorMsg.includes('serviceprovider') || fullErrorMsg.includes('organization')) {
+                error.message += '\n\n💡 Tip: The Organization ID does not exist in this system.';
+                error.message += '\n   • Try using Location instead';
+                error.message += '\n   • Or find a valid Organization ID by querying Organization resources';
+              }
+            }
+          }
+          
+          throw error;
+        }
+        
+        console.log('=== SUCCESS ===');
+        console.log('Encounter created successfully:', data);
+        return data;
+      });
+    })
+    .catch(function(error) {
+      console.error('=== ERROR RESPONSE ===');
+      console.error('Error object:', error);
+      console.error('Error message:', error.message);
+      console.error('Error status:', error.status);
+      console.error('Error responseJSON:', error.responseJSON);
+      
+      // Try to extract detailed error information
+      var errorMessage = 'Failed to create encounter';
+      var errorDetails = [];
+      
+      if (error.responseJSON) {
+        var opOutcome = error.responseJSON;
+        console.error('OperationOutcome:', JSON.stringify(opOutcome, null, 2));
+        
+        if (opOutcome.issue && opOutcome.issue.length > 0) {
+          opOutcome.issue.forEach(function(issue, index) {
+            console.error('Issue ' + index + ':', JSON.stringify(issue, null, 2));
+            var detail = '';
+            if (issue.details) {
+              detail = issue.details.text || issue.details.coding?.[0]?.display || '';
+            }
+            if (issue.diagnostics) {
+              detail += (detail ? ' - ' : '') + issue.diagnostics;
+            }
+            if (issue.expression && issue.expression.length > 0) {
+              detail += (detail ? ' (Field: ' : 'Field: ') + issue.expression.join(', ') + ')';
+            }
+            if (detail) {
+              errorDetails.push(detail);
+            }
+          });
+        }
+      }
+      
+      if (errorDetails.length > 0) {
+        errorMessage = errorDetails.join('; ');
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      var finalError = new Error(errorMessage);
+      finalError.status = error.status;
+      finalError.statusText = error.statusText;
+      finalError.responseJSON = error.responseJSON;
+      finalError.originalError = error;
+      
+      console.error('Final error to throw:', finalError);
+      throw finalError;
+    });
+  };
+
+  // Helper function to get display name for encounter class
+  function getClassDisplay(code) {
+    var classMap = {
+      'AMB': 'ambulatory',
+      'EMER': 'emergency',
+      'IMP': 'inpatient encounter',
+      'OBSENC': 'observation encounter',
+      'PRENC': 'pre-admission',
+      'SS': 'short stay',
+      'VR': 'virtual'
+    };
+    return classMap[code] || code;
+  }
 
   window.extractData = function() {
     var ret = $.Deferred();
@@ -102,302 +1063,122 @@
     }
 
     function onReady(smart)  {
-           console.log('SMART client ready:', smart);
-           console.log('SMART state:', smart.state);
-           console.log('SMART patient:', smart.patient);
-           console.log('=== FHIR SERVER VERIFICATION ===');
-           console.log('Current FHIR Server URL:', smart.state.serverUrl);
-           console.log('Launch URL parameters:', window.location.search);
-           console.log('Expected ISS from launch:', new URLSearchParams(window.location.search).get('iss'));
-           console.log('Server URL matches ISS:', smart.state.serverUrl === new URLSearchParams(window.location.search).get('iss'));
-           console.log('Is Cerner URL:', smart.state.serverUrl.includes('cerner.com'));
-           console.log('Is SMART Health IT URL:', smart.state.serverUrl.includes('smarthealthit.org'));
+           console.log('🚀 SMART client ready - Starting FH PA Dashboard');
+           console.log('Server:', smart.state.serverUrl);
+           console.log('Patient:', smart.patient.id);
            
-           // Warning if not hitting expected server
-           const expectedIss = new URLSearchParams(window.location.search).get('iss');
-           if (expectedIss && !smart.state.serverUrl.includes('cerner.com') && expectedIss.includes('cerner.com')) {
-             console.warn('⚠️  WARNING: Expected Cerner server but got different server!');
-             console.warn('Expected ISS:', expectedIss);
-             console.warn('Actual Server URL:', smart.state.serverUrl);
-           }
-           console.log('================================');
+           // Store SMART client globally for write operations
+           window.smartClient = smart;
            
            if (smart.hasOwnProperty('patient') && smart.patient) {
-        var patient = smart.patient;
-           
-           // Get encounter ID from FHIR client context
-           var encounterId = getEncounterIdFromContext(smart);
-           
-           // Check if patient.read is available
-           if (typeof patient.read === 'function') {
-             try {
-        var pt = patient.read();
-             } catch (error) {
-               // Try to get patient data directly
-               var pt = smart.patient.request({
-                 type: 'Patient',
-                 query: {},
-                 headers: { Accept: "application/fhir+json" }
-               });
-             }
-           } else {
-             // Try to get patient data directly
-             var pt = smart.patient.request({
-               type: 'Patient',
-               query: {},
-               headers: { Accept: "application/fhir+json" }
-             });
-           }
-           
-           // Add error handling for the patient Promise
-           pt = pt.catch(function(error) {
-             console.log('Patient read failed, trying direct request:', error);
-             // Try to get patient data directly using smart.request
-             return smart.request({
-               url: 'Patient/' + smart.patient.id,
-               query: {},
-               headers: { Accept: "application/fhir+json" }
-             });
-           });
-           
-           // Set up query parameters based on encounter context
-           var queryParams = encounterId ? { encounter: encounterId, _count: 50 } : { _count: 50 };
-           
-           if (encounterId) {
-             console.log('Fetching data for encounter:', encounterId);
-           } else {
-             console.log('Fetching all patient data (no encounter filter)');
-           }
-           
-           console.log('Observation query params:', queryParams);
-           console.log('Patient ID:', smart.patient.id);
         
-        // Fetch all comprehensive data with proper headers
-        var obv = smart.request({
-          url: 'Observation?patient=' + smart.patient.id,
-          query: queryParams,
-          headers: { Accept: "application/fhir+json" }
+        // Determine FHIR version
+        var fhirVersion = smart.state.serverUrl.includes('/r2/') ? 'R2' : 'R4';
+        var patientId = smart.patient.id;
+        
+        // Helper to build URL with query params
+        function buildUrl(resource, params) {
+          var url = smart.state.serverUrl + '/' + resource;
+          var queryParts = [];
+          for (var key in params) {
+            if (params.hasOwnProperty(key)) {
+              queryParts.push(encodeURIComponent(key) + '=' + encodeURIComponent(params[key]));
+            }
+          }
+          if (queryParts.length > 0) {
+            url += '?' + queryParts.join('&');
+          }
+          return wrapWithProxy(url);
+        }
+        
+        // Helper to make request with timeout and retry
+        function makeRequest(url, resourceName) {
+          console.log('Fetching ' + resourceName + '...');
+          return smart.request({
+            url: url,
+            headers: { Accept: "application/fhir+json" }
+          }).catch(function(error) {
+            console.warn('Failed to fetch ' + resourceName + ':', error.message || error);
+            return null; // Return null instead of throwing
+          });
+        }
+        
+        // Build resource URLs based on FHIR version
+        var medicationResource = fhirVersion === 'R2' ? 'MedicationOrder' : 'MedicationRequest';
+        
+        // 1. Load Patient Demographics
+        smart.patient.read().then(function(patient) {
+          var p = patient;
+          if (patient.resourceType === 'Bundle' && patient.entry && patient.entry[0]) {
+            p = patient.entry[0].resource;
+          }
+          
+          var fullName = '';
+          if (p.name && p.name[0]) {
+            var given = Array.isArray(p.name[0].given) ? p.name[0].given.join(' ') : p.name[0].given || '';
+            var family = Array.isArray(p.name[0].family) ? p.name[0].family.join(' ') : p.name[0].family || '';
+            fullName = (given + ' ' + family).trim();
+          }
+          
+          displayPatient(fullName || 'Unknown', p.gender || 'Unknown', p.birthDate || 'Unknown');
+        }).catch(function(error) {
+          console.warn('Patient load failed:', error);
+          displayPatient('Unknown', 'Unknown', 'Unknown');
         });
         
-        // Determine FHIR version and use appropriate resource names
-        var fhirVersion = smart.state.serverUrl.includes('/r2/') ? 'R2' : 'R4';
-        
-        var meds, allergies, conditions, documents;
-        
-        var medQuery = encounterId ? { encounter: encounterId, _count: 20 } : { _count: 20 };
-        var allergyQuery = encounterId ? { encounter: encounterId, _count: 20 } : { _count: 20 };
-        var conditionQuery = encounterId ? { encounter: encounterId, _count: 20 } : { _count: 20 };
-        var docQuery = encounterId ? { encounter: encounterId, _count: 20 } : { _count: 20 };
-        
-        console.log('Medication query params:', medQuery);
-        console.log('Allergy query params:', allergyQuery);
-        console.log('Condition query params:', conditionQuery);
-        console.log('Document query params:', docQuery);
-        console.log('Request URLs will include patient ID:', smart.patient.id);
-        console.log('=== FHIR REQUEST URLS ===');
-        console.log('Base Server URL:', smart.state.serverUrl);
-        console.log('Patient ID:', smart.patient.id);
-        console.log('Observation URL:', smart.state.serverUrl + '/Observation?patient=' + smart.patient.id);
-        console.log('Medication URL (R4):', smart.state.serverUrl + '/MedicationRequest?patient=' + smart.patient.id);
-        console.log('Allergy URL:', smart.state.serverUrl + '/AllergyIntolerance?patient=' + smart.patient.id);
-        console.log('========================');
-        
-        if (fhirVersion === 'R2') {
-          // DSTU2 (R2) resource names and structures
-          meds = smart.request({
-            url: 'MedicationOrder?patient=' + smart.patient.id,
-            query: medQuery,
-            headers: { Accept: "application/fhir+json" }
-          });
-          allergies = smart.request({
-            url: 'AllergyIntolerance?patient=' + smart.patient.id,
-            query: allergyQuery,
-            headers: { Accept: "application/fhir+json" }
-          });
-          conditions = smart.request({
-            url: 'Condition?patient=' + smart.patient.id,
-            query: conditionQuery,
-            headers: { Accept: "application/fhir+json" }
-          });
-          documents = smart.request({
-            url: 'DocumentReference?patient=' + smart.patient.id,
-            query: docQuery,
-            headers: { Accept: "application/fhir+json" }
-          });
-        } else {
-          // R4 resource names
-          meds = smart.request({
-            url: 'MedicationRequest?patient=' + smart.patient.id,
-            query: medQuery,
-            headers: { Accept: "application/fhir+json" }
-          });
-          allergies = smart.request({
-            url: 'AllergyIntolerance?patient=' + smart.patient.id,
-            query: allergyQuery,
-            headers: { Accept: "application/fhir+json" }
-          });
-          conditions = smart.request({
-            url: 'Condition?patient=' + smart.patient.id,
-            query: conditionQuery,
-            headers: { Accept: "application/fhir+json" }
-          });
-          documents = smart.request({
-            url: 'DocumentReference?patient=' + smart.patient.id,
-            query: docQuery,
-            headers: { Accept: "application/fhir+json" }
-          });
-        }
-
-        // Handle Promises properly with individual error handling
-        Promise.allSettled([pt, obv, meds, allergies, conditions, documents]).then(function(results) {
-          var patient = results[0].status === 'fulfilled' ? results[0].value : null;
-          var obv = results[1].status === 'fulfilled' ? results[1].value : null;
-          var meds = results[2].status === 'fulfilled' ? results[2].value : null;
-          var allergies = results[3].status === 'fulfilled' ? results[3].value : null;
-          var conditions = results[4].status === 'fulfilled' ? results[4].value : null;
-          var documents = results[5].status === 'fulfilled' ? results[5].value : null;
-          
-          // Log any failures
-          results.forEach(function(result, index) {
-            if (result.status === 'rejected') {
-              var resourceNames = fhirVersion === 'R2' ? 
-                ['Patient', 'Observation', 'MedicationOrder', 'AllergyIntolerance', 'Condition', 'DocumentReference'] :
-                ['Patient', 'Observation', 'MedicationRequest', 'AllergyIntolerance', 'Condition', 'DocumentReference'];
-              console.log('Failed to fetch ' + resourceNames[index] + ':', result.reason);
-            }
-          });
-        // Handle the FHIR client response format
-        
-        // Extract patient resource from Bundle if needed
-        var patientResource = patient;
-        if (patient && patient.resourceType === 'Bundle' && patient.entry && patient.entry.length > 0) {
-          patientResource = patient.entry[0].resource;
-        }
-        
-           // Process all data
-           var observations = processBundle(obv, 'observations');
-           var medications = processBundle(meds, 'medications');
-           var allergiesList = processBundle(allergies, 'allergies');
-           var conditionsList = processBundle(conditions, 'conditions');
-           var documentsList = processBundle(documents, 'documents');
-           
-           // Debug: Check if observations are actually filtered by encounter
-           if (encounterId && observations.length > 0) {
-             console.log('=== ENCOUNTER FILTERING DEBUG ===');
-             console.log('Total observations returned:', observations.length);
-             console.log('Looking for observations with encounter:', encounterId);
-             
-             var encounterFilteredObs = observations.filter(function(obs) {
-               return obs.context && obs.context.reference && 
-                      obs.context.reference.includes(encounterId);
-             });
-             
-             console.log('Observations actually linked to encounter:', encounterFilteredObs.length);
-             
-             if (encounterFilteredObs.length === 0) {
-               console.log('⚠️  No observations found for this encounter - SMART Health IT test data may not support encounter filtering');
-               console.log('Sample observation context:', observations[0]?.context);
-             } else {
-               console.log('✅ Found encounter-specific observations');
-             }
-             console.log('=====================================');
-           }
-        
-        
-        function processBundle(bundle, type) {
+        // 2. Load Observations
+        var obvUrl = buildUrl('Observation', { patient: patientId, _count: 100 });
+        makeRequest(obvUrl, 'Observations').then(function(bundle) {
           if (bundle && bundle.entry) {
-            var resources = bundle.entry.map(function(entry) { return entry.resource; });
-            console.log(type + ' Bundle JSON:', bundle);
-            return resources;
-          } else if (Array.isArray(bundle)) {
-            console.log(type + ' Array JSON:', bundle);
-            return bundle;
+            var observations = bundle.entry.map(function(e) { return e.resource; });
+            displayAllObservations(observations);
           } else {
-            return [];
+            $('#vitals').html('<p class="no-data">No observations available</p>');
           }
-        }
-
-          
-          var byCodes = function(code) {
-            if (!Array.isArray(observations)) {
-              return [];
-            }
-            return observations.filter(function(obs) {
-              if (obs && obs.code && obs.code.coding) {
-                return obs.code.coding.some(function(coding) {
-                  return coding.code === code;
-                });
-              }
-              return false;
-            });
-          };
-          var gender = patientResource.gender;
-
-          var fname = '';
-          var lname = '';
-
-          if (typeof patientResource.name !== 'undefined' && patientResource.name.length > 0) {
-            if (typeof patientResource.name[0].given !== 'undefined') {
-              // Handle both DSTU2 (array) and R4 (string) formats
-              if (Array.isArray(patientResource.name[0].given)) {
-                fname = patientResource.name[0].given.join(' ');
-              } else {
-                fname = patientResource.name[0].given;
-              }
-            }
-            if (typeof patientResource.name[0].family !== 'undefined') {
-              // Handle both DSTU2 (array) and R4 (string) formats
-              if (Array.isArray(patientResource.name[0].family)) {
-                lname = patientResource.name[0].family.join(' ');
-              } else {
-                lname = patientResource.name[0].family;
-              }
-            }
+        });
+        
+        // 3. Load Medications  
+        var medUrl = buildUrl(medicationResource, { patient: patientId, _count: 100 });
+        makeRequest(medUrl, 'Medications').then(function(bundle) {
+          if (bundle && bundle.entry) {
+            var medications = bundle.entry.map(function(e) { return e.resource; });
+            displayMedications(medications);
+          } else {
+            $('#meds').html('<p class="no-data">No medications available</p>');
           }
-
-          var height = byCodes('8302-2');
-          var systolicbp = getBloodPressureValue(byCodes('55284-4'),'8480-6');
-          var diastolicbp = getBloodPressureValue(byCodes('55284-4'),'8462-4');
-          var hdl = byCodes('2085-9');
-          var ldl = byCodes('2089-1');
-
-          // Sort observations by date to get the most recent
-          function sortByDate(obs) {
-            // Create a copy of the array to avoid modifying the original
-            var sortedObs = obs.slice();
-            return sortedObs.sort(function(a, b) {
-              var dateA = new Date(a.effectiveDateTime || a.issued || a.meta?.lastUpdated || 0);
-              var dateB = new Date(b.effectiveDateTime || b.issued || b.meta?.lastUpdated || 0);
-              return dateB - dateA; // Most recent first
-            });
+        });
+        
+        // 4. Load Allergies
+        var allergyUrl = buildUrl('AllergyIntolerance', { patient: patientId, _count: 100 });
+        makeRequest(allergyUrl, 'Allergies').then(function(bundle) {
+          if (bundle && bundle.entry) {
+            var allergies = bundle.entry.map(function(e) { return e.resource; });
+            displayAllergies(allergies);
+          } else {
+            $('#allergies').html('<p class="no-data">No allergies available</p>');
           }
-
-          var p = defaultPatient();
-          p.birthdate = patientResource.birthDate;
-          p.gender = gender;
-          p.fname = fname;
-          p.lname = lname;
-          
-          // Store all observations for each vital sign type
-          p.heightObservations = height && height.length > 0 ? sortByDate(height) : [];
-          p.hdlObservations = hdl && hdl.length > 0 ? sortByDate(hdl) : [];
-          p.ldlObservations = ldl && ldl.length > 0 ? sortByDate(ldl) : [];
-          
-          // For blood pressure, we'll handle it separately since it has a different structure
-            p.systolicbp = systolicbp;
-            p.diastolicbp = diastolicbp;
-          
-          // Add comprehensive data
-          p.medications = medications;
-          p.allergies = allergiesList;
-          p.conditions = conditionsList;
-          p.documents = documentsList;
-          p.observations = observations;
-
-          ret.resolve(p);
-        }).catch(function(error) {
-          console.log('Promise error:', error);
-          onError();
+        });
+        
+        // 5. Load Conditions
+        var conditionUrl = buildUrl('Condition', { patient: patientId, _count: 100 });
+        makeRequest(conditionUrl, 'Conditions').then(function(bundle) {
+          if (bundle && bundle.entry) {
+            var conditions = bundle.entry.map(function(e) { return e.resource; });
+            displayConditions(conditions);
+          } else {
+            $('#conditions').html('<p class="no-data">No conditions available</p>');
+          }
+        });
+        
+        // 6. Load Documents
+        var docUrl = buildUrl('DocumentReference', { patient: patientId, _count: 100 });
+        makeRequest(docUrl, 'Documents').then(function(bundle) {
+          if (bundle && bundle.entry) {
+            var documents = bundle.entry.map(function(e) { return e.resource; });
+            displayDocuments(documents);
+          } else {
+            $('#documents').html('<p class="no-data">No clinical documents available</p>');
+          }
         });
       } else {
         console.log('No patient context available');
@@ -429,98 +1210,26 @@
 
   };
 
-  function defaultPatient(){
-    return {
-      fname: {value: ''},
-      lname: {value: ''},
-      gender: {value: ''},
-      birthdate: {value: ''},
-      height: {value: ''},
-      systolicbp: {value: ''},
-      diastolicbp: {value: ''},
-      ldl: {value: ''},
-      hdl: {value: ''},
-      heightObservations: [],
-      hdlObservations: [],
-      ldlObservations: []
-    };
-  }
-
-  function getBloodPressureValue(BPObservations, typeOfPressure) {
-    var formattedBPObservations = [];
-    BPObservations.forEach(function(observation){
-      var BP = observation.component.find(function(component){
-        return component.code.coding.find(function(coding) {
-          return coding.code == typeOfPressure;
-        });
-      });
-      if (BP) {
-        observation.valueQuantity = BP.valueQuantity;
-        formattedBPObservations.push(observation);
-      }
-    });
-
-    return getQuantityValueAndUnit(formattedBPObservations[0]);
-  }
-
-  function getQuantityValueAndUnit(ob) {
-    if (typeof ob != 'undefined' &&
-        typeof ob.valueQuantity != 'undefined' &&
-        typeof ob.valueQuantity.value != 'undefined' &&
-        typeof ob.valueQuantity.unit != 'undefined') {
-          
-          var value = ob.valueQuantity.value;
-          var unit = ob.valueQuantity.unit;
-          
-          // Round to appropriate decimal places based on unit
-          if (unit === 'cm') {
-            value = Math.round(value * 10) / 10; // 1 decimal place for height
-          } else if (unit === 'mm[Hg]') {
-            value = Math.round(value); // Whole numbers for blood pressure
-          } else if (unit === 'mg/dL') {
-            value = Math.round(value * 10) / 10; // 1 decimal place for cholesterol
-          } else {
-            value = Math.round(value * 100) / 100; // 2 decimal places default
-          }
-          
-          return value + ' ' + unit;
-    } else {
-      return undefined;
-    }
-  }
-
-  window.drawVisualization = function(p) {
-    $('#holder').addClass('show');
+  // Helper function to display patient demographics
+  function displayPatient(fullName, gender, birthdate) {
+    console.log('displayPatient called:', fullName, gender, birthdate);
+    $('#holder').addClass('show');  // Show the main content
     $('#loading').hide();
-    
-    // Update patient demographics
-    $('#fname').html(p.fname || '-');
-    $('#lname').html(p.lname || '-');
-    $('#gender').html(toSentenceCase(p.gender) || '-');
-    $('#birthdate').html(p.birthdate || '-');
-    
-    // Update patient name in header
-    var fullName = (p.fname || '') + ' ' + (p.lname || '');
-    $('#patient-name-display').html(fullName.trim() || 'Patient');
-    
-    // Display all observations as a simple list
-    displayAllObservations(p.observations);
-    
-        // Display comprehensive data
-        displayMedications(p.medications);
-        displayAllergies(p.allergies);
-        displayConditions(p.conditions);
-        displayDocuments(p.documents);
-        
-  };
+    $('#fname').html(fullName.split(' ')[0] || '-');
+    $('#lname').html(fullName.split(' ').slice(1).join(' ') || '-');
+    $('#gender').html(toSentenceCase(gender) || '-');
+    $('#birthdate').html(birthdate || '-');
+    $('#patient-name-display').html(fullName || 'Patient');
+  }
   
   function displayMedications(medications) {
+    console.log('displayMedications called with', medications.length, 'items');
     var html = '';
     if (medications && medications.length > 0) {
       // Sort medications by last updated date (most recent first)
       var sortedMeds = medications.sort(function(a, b) {
-        var dateA = new Date(a.meta?.lastUpdated || a.authoredOn || 0);
-        var dateB = new Date(b.meta?.lastUpdated || b.authoredOn || 0);
+        var dateA = new Date((a.meta && a.meta.lastUpdated) || a.authoredOn || 0);
+        var dateB = new Date((b.meta && b.meta.lastUpdated) || b.authoredOn || 0);
         return dateB - dateA; // Most recent first
       });
       
@@ -594,8 +1303,8 @@
     if (allergies && allergies.length > 0) {
       // Sort allergies by last updated date (most recent first)
       var sortedAllergies = allergies.sort(function(a, b) {
-        var dateA = new Date(a.meta?.lastUpdated || a.recordedDate || 0);
-        var dateB = new Date(b.meta?.lastUpdated || b.recordedDate || 0);
+        var dateA = new Date((a.meta && a.meta.lastUpdated) || a.recordedDate || 0);
+        var dateB = new Date((b.meta && b.meta.lastUpdated) || b.recordedDate || 0);
         return dateB - dateA; // Most recent first
       });
       
@@ -684,8 +1393,8 @@
     if (conditions && conditions.length > 0) {
       // Sort conditions by onset date (most recent first)
       var sortedConditions = conditions.sort(function(a, b) {
-        var dateA = new Date(a.onsetDateTime || a.onsetPeriod?.start || a.recordedDate || 0);
-        var dateB = new Date(b.onsetDateTime || b.onsetPeriod?.start || b.recordedDate || 0);
+        var dateA = new Date(a.onsetDateTime || (a.onsetPeriod && a.onsetPeriod.start) || a.recordedDate || 0);
+        var dateB = new Date(b.onsetDateTime || (b.onsetPeriod && b.onsetPeriod.start) || b.recordedDate || 0);
         return dateB - dateA; // Most recent first
       });
       
@@ -793,8 +1502,8 @@
     if (documents && documents.length > 0) {
       // Sort documents by last updated date (most recent first)
       var sortedDocs = documents.sort(function(a, b) {
-        var dateA = new Date(a.meta?.lastUpdated || a.date || a.indexed || 0);
-        var dateB = new Date(b.meta?.lastUpdated || b.date || b.indexed || 0);
+        var dateA = new Date((a.meta && a.meta.lastUpdated) || a.date || a.indexed || 0);
+        var dateB = new Date((b.meta && b.meta.lastUpdated) || b.date || b.indexed || 0);
         return dateB - dateA; // Most recent first
       });
       
@@ -878,13 +1587,53 @@
     $('#documents').html(html);
   }
 
+  // Helper function to format observation values
+  function formatObservationValue(obs) {
+    if (obs.valueQuantity) {
+      var value = obs.valueQuantity.value;
+      var unit = obs.valueQuantity.unit || obs.valueQuantity.code || '';
+      
+      // Round to appropriate decimal places based on unit
+      if (unit === 'cm' || unit === 'kg') {
+        value = Math.round(value * 10) / 10; // 1 decimal
+      } else if (unit === 'mm[Hg]') {
+        value = Math.round(value); // Whole number
+      } else if (unit === 'mg/dL' || unit === 'g/dL') {
+        value = Math.round(value * 10) / 10; // 1 decimal
+      } else {
+        value = Math.round(value * 100) / 100; // 2 decimals default
+      }
+      
+      return value + ' ' + unit;
+    } else if (obs.valueCodeableConcept) {
+      return obs.valueCodeableConcept.text || (obs.valueCodeableConcept.coding && obs.valueCodeableConcept.coding[0] && obs.valueCodeableConcept.coding[0].display) || 'Unknown';
+    } else if (obs.valueString) {
+      return obs.valueString;
+    } else if (obs.valueBoolean !== undefined) {
+      return obs.valueBoolean.toString();
+    } else if (obs.component && obs.component.length > 0) {
+      // Handle multi-component observations (like blood pressure)
+      return obs.component.map(function(comp) {
+        var compName = (comp.code && comp.code.coding && comp.code.coding[0] && comp.code.coding[0].display) || 'Component';
+        var compValue = (comp.valueQuantity && comp.valueQuantity.value) || 'N/A';
+        var compUnit = (comp.valueQuantity && comp.valueQuantity.unit) || '';
+        if (compUnit === 'mm[Hg]') {
+          compValue = Math.round(compValue);
+        }
+        return compName + ': ' + compValue + ' ' + compUnit;
+      }).join(', ');
+    }
+    return 'No value';
+  }
+
   function displayAllObservations(observations) {
+    console.log('displayAllObservations called with', observations ? observations.length : 0, 'items');
     var html = '';
     if (observations && observations.length > 0) {
       // Sort observations by lastUpdated date (most recent first)
       var sortedObservations = observations.sort(function(a, b) {
-        var dateA = new Date(a.meta?.lastUpdated || a.effectiveDateTime || a.issued || 0);
-        var dateB = new Date(b.meta?.lastUpdated || b.effectiveDateTime || b.issued || 0);
+        var dateA = new Date((a.meta && a.meta.lastUpdated) || a.effectiveDateTime || a.issued || 0);
+        var dateB = new Date((b.meta && b.meta.lastUpdated) || b.effectiveDateTime || b.issued || 0);
         return dateB - dateA; // Most recent first
       });
       
@@ -893,21 +1642,14 @@
         // Get the observation name/type
         var obsName = 'Unknown';
         if (obs.code && obs.code.coding && obs.code.coding[0]) {
-          obsName = obs.code.coding[0].display || obs.code.coding[0].code;
+          obsName = obs.code.coding[0].display || obs.code.text || obs.code.coding[0].code;
         }
         
         // Get the value
-        var value = 'No value';
-        if (obs.valueQuantity) {
-          value = getQuantityValueAndUnit(obs);
-        } else if (obs.valueString) {
-          value = obs.valueString;
-        } else if (obs.valueBoolean !== undefined) {
-          value = obs.valueBoolean.toString();
-        }
+        var value = formatObservationValue(obs);
         
         // Get the date
-        var date = obs.effectiveDateTime || obs.issued || obs.meta?.lastUpdated || 'Unknown date';
+        var date = obs.effectiveDateTime || obs.issued || (obs.meta && obs.meta.lastUpdated) || 'Unknown date';
         var formattedDate = new Date(date).toLocaleDateString();
         
         html += '<li><strong>' + obsName + ': ' + value + '</strong><div class="item-meta">Date: ' + formattedDate + '</div></li>';

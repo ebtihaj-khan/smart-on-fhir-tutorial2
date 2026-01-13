@@ -158,6 +158,53 @@ body {
 
 .card-content {
   padding: 20px;
+  min-height: 100px;
+  position: relative;
+}
+
+/* In-section loading state */
+.card-content .loading-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.card-content .spinner {
+  margin: 0 auto;
+  width: 40px;
+  text-align: center;
+}
+
+.card-content .spinner > div {
+  width: 8px;
+  height: 8px;
+  background-color: #667eea;
+  border-radius: 100%;
+  display: inline-block;
+  animation: sk-bouncedelay 1.4s infinite ease-in-out both;
+  margin: 0 2px;
+}
+
+.card-content .spinner .bounce1 {
+  animation-delay: -0.32s;
+}
+
+.card-content .spinner .bounce2 {
+  animation-delay: -0.16s;
+}
+
+@keyframes sk-bouncedelay {
+  0%, 80%, 100% { 
+    transform: scale(0);
+  } 40% { 
+    transform: scale(1.0);
+  }
 }
 
 /* Patient Demographics */

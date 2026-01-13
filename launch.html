@@ -33,32 +33,16 @@
         }
     </script>
     <script>
-        // Environment detection and configuration
-        const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-        
-        // Configuration for different environments
+        // Localhost-only configuration
         const config = {
-            localhost: {
-                clientId: '3e0b9045-0ea9-432a-848f-cccfed325142',
-                applicationId: 'ccfeb89f-1051-42c9-b53e-f9a411b69863',
-                redirectUri: 'http://localhost:443/',
-                environment: 'localhost'
-            },
-            vercel: {
-                clientId: 'f60d64fd-1ca1-4986-a661-bc28f2fc3ff7',
-                applicationId: 'a38f9781-2ae9-4e0f-bd25-085722b78b7d',
-                redirectUri: 'https://smart-on-fhir-tutorial2.vercel.app/',
-                environment: 'vercel'
-            }
+            clientId: '3e0b9045-0ea9-432a-848f-cccfed325142',
+            applicationId: 'ccfeb89f-1051-42c9-b53e-f9a411b69863',
+            redirectUri: 'http://localhost:443/index.html'
         };
         
-        // Select configuration based on environment
-        const currentConfig = isLocalhost ? config.localhost : config.vercel;
-        
-        console.log('Environment detected:', currentConfig.environment);
-        console.log('Using Client ID:', currentConfig.clientId);
-        console.log('Using Application ID:', currentConfig.applicationId);
-        console.log('Using Redirect URI:', currentConfig.redirectUri);
+        console.log('Using Client ID:', config.clientId);
+        console.log('Using Application ID:', config.applicationId);
+        console.log('Using Redirect URI:', config.redirectUri);
         
         // Check if this is an OAuth callback (has code parameter)
         const urlParams = new URLSearchParams(window.location.search);
@@ -98,9 +82,9 @@
                 console.log('Launch:', launch);
                 
                 const authConfig = {
-                    'client_id': currentConfig.clientId,
-                    'scope': 'user/Practitioner.read patient/Patient.read patient/Observation.read patient/Encounter.read openid fhirUser',
-                    'redirect_uri': currentConfig.redirectUri,
+                    'client_id': config.clientId,
+                    'scope': 'launch online_access openid profile fhirUser patient/Patient.read patient/Observation.read patient/MedicationRequest.read patient/AllergyIntolerance.read patient/Condition.read patient/DocumentReference.read patient/Encounter.read patient/Encounter.write user/Encounter.write',
+                    'redirect_uri': config.redirectUri,
                     'response_type': 'code',
                     'iss': iss,
                     'aud': iss,  // important for Cerner - set aud equal to iss
@@ -111,16 +95,8 @@
             } else {
                 // Launch without iss parameter (standalone)
                 console.log('Starting standalone launch');
-                
-                if (isLocalhost) {
-                    // For local testing, redirect to SMART Health IT sandbox
-                    console.log('No launch parameters found, redirecting to SMART Health IT sandbox for testing');
-                    window.location.href = 'https://launch.smarthealthit.org/v/r4/fhir';
-                } else {
-                    // For Vercel, show error message
-                    console.log('No launch parameters found on Vercel - app must be launched from EHR');
-                    document.body.innerHTML = '<div style="padding: 20px; text-align: center; font-family: Arial, sans-serif;"><h2>🚫 Launch Error</h2><p>This app must be launched from an EHR system.</p><p><strong>For testing:</strong></p><p><a href="https://launch.smarthealthit.org/v/r4/fhir" target="_blank" style="background: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Launch with SMART Health IT Sandbox</a></p></div>';
-                }
+                console.log('No launch parameters found, redirecting to SMART Health IT sandbox for testing');
+                window.location.href = 'https://launch.smarthealthit.org/v/r4/fhir';
             }
         }
     </script>

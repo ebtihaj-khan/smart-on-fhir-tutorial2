@@ -24,39 +24,23 @@
     <!-- Currently, the SMART App Launcher (https://launch.smarthealthit.org) does not check/validate the client_id field.
         If/when this changes, or when working with other authorization servers, please update the client_id field here. -->
     <script>
-        // Environment detection and configuration
-        const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-        
-        // Configuration for different environments
+        // Localhost-only configuration
         const config = {
-            localhost: {
-                clientId: '43ae576d-41fd-4e5e-a654-45c7d294f919',
-                applicationId: '27f66c76-6f30-4a3e-9213-d4faf3ff2eba',
-                redirectUri: 'http://localhost:443/',
-                environment: 'localhost'
-            },
-            vercel: {
-                clientId: 'f60d64fd-1ca1-4986-a661-bc28f2fc3ff7',
-                applicationId: 'a38f9781-2ae9-4e0f-bd25-085722b78b7d',
-                redirectUri: 'https://smart-on-fhir-tutorial2.vercel.app/',
-                environment: 'vercel'
-            }
+            clientId: '43ae576d-41fd-4e5e-a654-45c7d294f919',
+            applicationId: '27f66c76-6f30-4a3e-9213-d4faf3ff2eba',
+            redirectUri: 'http://localhost:443/'
         };
         
-        // Select configuration based on environment
-        const currentConfig = isLocalhost ? config.localhost : config.vercel;
-        
-        console.log('Environment detected:', currentConfig.environment);
-        console.log('Using Client ID:', currentConfig.clientId);
+        console.log('Using Client ID:', config.clientId);
         
         // Get URL parameters for iss and aud
         const urlParams = new URLSearchParams(window.location.search);
         const iss = urlParams.get('iss');
         
         const authConfig = {
-            'client_id': currentConfig.clientId,
-            'scope': 'launch online_access openid profile fhirUser patient/Patient.read patient/Observation.read patient/MedicationRequest.read patient/AllergyIntolerance.read patient/Condition.read patient/DocumentReference.read',
-            'redirect_uri': currentConfig.redirectUri,
+            'client_id': config.clientId,
+            'scope': 'launch online_access openid profile fhirUser patient/Patient.read patient/Observation.read patient/MedicationRequest.read patient/AllergyIntolerance.read patient/Condition.read patient/DocumentReference.read patient/Encounter.read patient/Encounter.write user/Encounter.write',
+            'redirect_uri': config.redirectUri,
             'response_type': 'code'
         };
         
