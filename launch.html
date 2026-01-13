@@ -18,6 +18,9 @@
       <script src='./lib/js/cerner-smart-embeddable-lib-1.0.0.min.js'></script>
     -->
 
+    <!-- Environment Configuration -->
+    <script src='./config.js'></script>
+    
     <!-- FHIR Client JS Library -->
     <script src='https://unpkg.com/fhirclient@2.4.0/build/fhir-client.js?v=2.4.0'></script>
     
@@ -33,12 +36,8 @@
         }
     </script>
     <script>
-        // Localhost-only configuration
-        const config = {
-            clientId: '3e0b9045-0ea9-432a-848f-cccfed325142',
-            applicationId: 'ccfeb89f-1051-42c9-b53e-f9a411b69863',
-            redirectUri: 'http://localhost:443/index.html'
-        };
+        // Use environment-based configuration
+        const config = window.appConfig;
         
         console.log('Using Client ID:', config.clientId);
         console.log('Using Application ID:', config.applicationId);
@@ -83,7 +82,7 @@
                 
                 const authConfig = {
                     'client_id': config.clientId,
-                    'scope': 'launch online_access openid profile fhirUser patient/Patient.read patient/Observation.read patient/MedicationRequest.read patient/AllergyIntolerance.read patient/Condition.read patient/DocumentReference.read patient/Encounter.read patient/Encounter.write user/Encounter.write',
+                    'scope': config.scopes,
                     'redirect_uri': config.redirectUri,
                     'response_type': 'code',
                     'iss': iss,
