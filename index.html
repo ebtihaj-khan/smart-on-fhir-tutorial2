@@ -80,9 +80,14 @@
 
         <!-- Medications Card -->
         <section class="card medications-card">
-          <div class="card-header">
-            <i class="fas fa-pills"></i>
-            <h2>Medications</h2>
+          <div class="card-header" style="display: flex; align-items: center; justify-content: space-between;">
+            <div style="display: flex; align-items: center;">
+              <i class="fas fa-pills"></i>
+              <h2 style="margin: 0 0 0 10px;">Medications</h2>
+            </div>
+            <select id="medication-filter-encounter" style="padding: 4px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9em;">
+              <option value="">All Medications</option>
+            </select>
           </div>
           <div class="card-content">
             <div id='medications' class="loading-state">
@@ -213,15 +218,16 @@
             <div style="margin-bottom: 20px;">
               <label for="encounter-id-input" style="display: block; margin-bottom: 5px; font-weight: 500;">Encounter ID:</label>
               <div style="display: flex; gap: 5px;">
-                <input type="text" id="encounter-id-input" placeholder="Enter Encounter ID" style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                <input type="text" id="encounter-id-input" placeholder="Enter Encounter ID or type to search..." style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
                 <button type="button" id="find-encounters-btn" style="padding: 8px 12px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; white-space: nowrap;">
-                  <i class="fas fa-search"></i> Find
+                  <i class="fas fa-search"></i> Find All
                 </button>
                 <button type="button" id="load-encounter-btn" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;">
                   <i class="fas fa-download"></i> Load
                 </button>
               </div>
-              <small style="color: #666; display: block; margin-top: 4px;">Click "Find" to see available encounters, or enter an ID directly and click "Load"</small>
+              <small style="color: #666; display: block; margin-top: 4px;">Type in the field above to search encounters by ID, or click "Find All" to see all encounters</small>
+              
               <div id="encounters-list" style="margin-top: 8px; display: none;"></div>
             </div>
 
@@ -264,6 +270,23 @@
                 <label for="update-encounter-end" style="display: block; margin-bottom: 5px; font-weight: 500;">End Date/Time:</label>
                 <input type="datetime-local" id="update-encounter-end" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
                 <small style="color: #666; display: block; margin-top: 4px;">Leave empty to keep existing, or clear to remove end date</small>
+              </div>
+              
+              <!-- Medications for this Encounter -->
+              <div style="margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 4px; border: 1px solid #dee2e6;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                  <h3 style="margin: 0; font-size: 1.1em; font-weight: 600;">
+                    <i class="fas fa-pills"></i> Medications for this Encounter
+                  </h3>
+                  <button type="button" id="load-encounter-meds-btn" style="padding: 6px 12px; background: #17a2b8; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9em;">
+                    <i class="fas fa-sync"></i> Refresh
+                  </button>
+                </div>
+                <div id="encounter-medications-list" style="min-height: 50px;">
+                  <div style="color: #666; text-align: center; padding: 10px;">
+                    <i class="fas fa-spinner fa-spin"></i> Loading medications...
+                  </div>
+                </div>
               </div>
               
               <button type="submit" id="update-encounter-btn" style="background: #ffc107; color: #000; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; font-weight: 500;">
@@ -531,6 +554,56 @@
       // Store loaded encounter data
       var loadedEncounter = null;
 
+      // Function to render filtered encounters (shared function)
+      function renderEncounters(filterText) {
+        var $list = $('#encounters-list');
+        if (!window.allEncounters || window.allEncounters.length === 0) {
+          return;
+        }
+        
+        var filteredEncounters = window.allEncounters;
+        if (filterText && filterText.trim() !== '') {
+          var searchLower = filterText.toLowerCase().trim();
+          filteredEncounters = window.allEncounters.filter(function(encounter) {
+            return encounter.id.toLowerCase().includes(searchLower);
+          });
+        }
+        
+        if (filteredEncounters.length > 0) {
+          var html = '<div style="background: #f8f9fa; padding: 10px; border-radius: 4px; max-height: 300px; overflow-y: auto;">';
+          html += '<strong>Available Encounters (' + filteredEncounters.length + (filterText ? ' filtered' : '') + '):</strong><ul style="margin: 5px 0; padding-left: 20px; list-style: none;">';
+          filteredEncounters.forEach(function(encounter) {
+            html += '<li class="encounter-list-item" data-encounter-id="' + encounter.id + '" style="margin: 8px 0; padding: 8px; background: white; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; transition: background 0.2s;" ';
+            html += 'onmouseover="this.style.background=\'#e7f3ff\'" onmouseout="this.style.background=\'white\'" ';
+            html += 'onclick="$(\'#encounter-id-input\').val(\'' + encounter.id + '\'); $(this).css(\'background\', \'#d4edda\'); setTimeout(function(){ $(\'#load-encounter-btn\').click(); }, 300);">';
+            html += '<div style="font-weight: 500; color: #007bff;">' + encounter.type + '</div>';
+            html += '<div style="font-size: 0.9em; color: #666; margin-top: 4px;">';
+            html += '<span style="margin-right: 10px;"><strong>Status:</strong> ' + encounter.status + '</span>';
+            html += '<span style="margin-right: 10px;"><strong>Date:</strong> ' + encounter.dateRange + '</span>';
+            if (encounter.reason !== 'N/A') {
+              html += '<span><strong>Reason:</strong> ' + encounter.reason + '</span>';
+            }
+            html += '</div>';
+            html += '<div style="font-size: 0.85em; color: #999; margin-top: 4px;">ID: ' + encounter.id + '</div>';
+            html += '</li>';
+          });
+          html += '</ul></div>';
+          $list.html(html).show();
+        } else {
+          $list.html('<div style="color: #856404; background: #fff3cd; padding: 8px; border-radius: 4px;">No encounters found matching "' + filterText + '".</div>').show();
+        }
+      }
+
+      // Live search as user types in encounter ID input
+      $('#encounter-id-input').on('input', function() {
+        var searchText = $(this).val().trim();
+        
+        // Only filter if encounters have been loaded
+        if (window.allEncounters && window.allEncounters.length > 0) {
+          renderEncounters(searchText);
+        }
+      });
+
       // Handle "Find Encounters" button
       $('#find-encounters-btn').on('click', function() {
         var $btn = $(this);
@@ -543,25 +616,13 @@
         if (typeof window.findAvailableEncounters === 'function') {
           window.findAvailableEncounters(50).then(function(encounters) {
             if (encounters.length > 0) {
-              var html = '<div style="background: #f8f9fa; padding: 10px; border-radius: 4px; max-height: 300px; overflow-y: auto;">';
-              html += '<strong>Available Encounters (' + encounters.length + '):</strong><ul style="margin: 5px 0; padding-left: 20px; list-style: none;">';
-              encounters.forEach(function(encounter) {
-                html += '<li style="margin: 8px 0; padding: 8px; background: white; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; transition: background 0.2s;" ';
-                html += 'onmouseover="this.style.background=\'#e7f3ff\'" onmouseout="this.style.background=\'white\'" ';
-                html += 'onclick="$(\'#encounter-id-input\').val(\'' + encounter.id + '\'); $(this).css(\'background\', \'#d4edda\'); setTimeout(function(){ $(\'#load-encounter-btn\').click(); }, 300);">';
-                html += '<div style="font-weight: 500; color: #007bff;">' + encounter.type + '</div>';
-                html += '<div style="font-size: 0.9em; color: #666; margin-top: 4px;">';
-                html += '<span style="margin-right: 10px;"><strong>Status:</strong> ' + encounter.status + '</span>';
-                html += '<span style="margin-right: 10px;"><strong>Date:</strong> ' + encounter.dateRange + '</span>';
-                if (encounter.reason !== 'N/A') {
-                  html += '<span><strong>Reason:</strong> ' + encounter.reason + '</span>';
-                }
-                html += '</div>';
-                html += '<div style="font-size: 0.85em; color: #999; margin-top: 4px;">ID: ' + encounter.id + '</div>';
-                html += '</li>';
-              });
-              html += '</ul></div>';
-              $list.html(html).show();
+              // Store encounters globally for filtering
+              window.allEncounters = encounters;
+              
+              // Initial render with current input value
+              var currentInput = $('#encounter-id-input').val().trim();
+              renderEncounters(currentInput);
+              
             } else {
               $list.html('<div style="color: #856404; background: #fff3cd; padding: 8px; border-radius: 4px;">No encounters found for this patient.</div>').show();
             }
@@ -636,6 +697,13 @@
             
             $form.show();
             $btn.prop('disabled', false).html(originalText);
+            
+            // Clear any previous result messages when loading a new encounter
+            var $result = $('#update-encounter-result');
+            $result.hide().removeClass('success error').html('');
+            
+            // Load medications for this encounter
+            loadEncounterMedications(encounterId);
           }).catch(function(error) {
             alert('Error loading encounter: ' + (error.message || 'Unknown error'));
             $btn.prop('disabled', false).html(originalText);
@@ -647,12 +715,116 @@
         }
       });
 
+      // Function to load medications for an encounter
+      function loadEncounterMedications(encounterId) {
+        var $medList = $('#encounter-medications-list');
+        
+        if (!encounterId) {
+          $medList.html('<div style="color: #856404; background: #fff3cd; padding: 8px; border-radius: 4px;">No encounter loaded</div>');
+          return;
+        }
+        
+        $medList.html('<div style="color: #666; text-align: center; padding: 10px;"><i class="fas fa-spinner fa-spin"></i> Loading medications...</div>');
+        
+        if (typeof window.getMedicationsByEncounter === 'function') {
+          window.getMedicationsByEncounter(encounterId).then(function(medications) {
+            // Update global medications cache with encounter medications (merge with existing)
+            if (window.allMedications) {
+              medications.forEach(function(med) {
+                // Check if medication already exists in cache
+                var existingIndex = window.allMedications.findIndex(function(m) {
+                  return m.id === med.id;
+                });
+                if (existingIndex >= 0) {
+                  // Update existing medication
+                  window.allMedications[existingIndex] = med;
+                } else {
+                  // Add new medication to cache
+                  window.allMedications.push(med);
+                }
+              });
+            } else {
+              // Initialize cache if it doesn't exist
+              window.allMedications = medications;
+            }
+            
+            if (medications.length > 0) {
+              var html = '<ul style="margin: 0; padding-left: 20px;">';
+              medications.forEach(function(med) {
+                var medName = 'Unknown';
+                if (med.medicationCodeableConcept && med.medicationCodeableConcept.text) {
+                  medName = med.medicationCodeableConcept.text;
+                } else if (med.medicationCodeableConcept && med.medicationCodeableConcept.coding && med.medicationCodeableConcept.coding[0]) {
+                  medName = med.medicationCodeableConcept.coding[0].display || med.medicationCodeableConcept.coding[0].code;
+                } else if (med.medicationReference && med.medicationReference.display) {
+                  medName = med.medicationReference.display;
+                }
+                
+                var status = med.status || 'Unknown';
+                var dosage = '';
+                if (med.dosageInstruction && med.dosageInstruction[0] && med.dosageInstruction[0].text) {
+                  dosage = med.dosageInstruction[0].text;
+                }
+                var authoredOn = med.authoredOn ? new Date(med.authoredOn).toLocaleDateString() : '';
+                
+                var meta = status;
+                if (dosage) meta += ' • ' + dosage;
+                if (authoredOn) meta += ' • ' + authoredOn;
+                
+                // Add fulfill button for active medications (same as main medications list)
+                var fulfillButton = '';
+                var isFulfilled = med.status === 'completed' || med.status === 'fulfilled';
+                
+                if (isFulfilled) {
+                  fulfillButton = '<span style="margin-left: 10px; padding: 4px 12px; background: #6c757d; color: white; border-radius: 4px; font-size: 0.85em; display: inline-block;">' +
+                                 '<i class="fas fa-check-circle"></i> Fulfilled</span>';
+                } else if (med.status && med.status !== 'cancelled' && med.status !== 'stopped' && med.status !== 'entered-in-error') {
+                  fulfillButton = '<button class="fulfill-med-btn" data-med-id="' + med.id + '" data-med-name="' + 
+                                 encodeURIComponent(medName) + '" style="margin-left: 10px; padding: 4px 12px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85em; white-space: nowrap;">' +
+                                 '<i class="fas fa-check"></i> Fulfill</button>';
+                }
+                
+                html += '<li style="display: flex; justify-content: space-between; align-items: center; margin: 8px 0; padding: 8px; background: #f8f9fa; border-radius: 4px;">';
+                html += '<div style="flex: 1;"><strong>' + medName + '</strong><div style="font-size: 0.9em; color: #666; margin-top: 4px;">' + meta + '</div></div>';
+                html += fulfillButton;
+                html += '</li>';
+              });
+              html += '</ul>';
+              $medList.html(html);
+            } else {
+              $medList.html('<div style="color: #856404; background: #fff3cd; padding: 8px; border-radius: 4px;"><i class="fas fa-info-circle"></i> No medications found for this encounter</div>');
+            }
+          }).catch(function(error) {
+            $medList.html('<div style="color: #721c24; background: #f8d7da; padding: 8px; border-radius: 4px;">Error: ' + (error.message || 'Failed to load medications') + '</div>');
+            console.error('Error loading medications:', error);
+          });
+        } else {
+          $medList.html('<div style="color: #721c24; background: #f8d7da; padding: 8px; border-radius: 4px;">Function not available. Please launch from an EHR.</div>');
+        }
+      }
+
+      // Handle "Refresh Medications" button
+      $('#load-encounter-meds-btn').on('click', function() {
+        if (loadedEncounter && loadedEncounter.id) {
+          loadEncounterMedications(loadedEncounter.id);
+        } else {
+          var encounterId = $('#encounter-id-input').val().trim();
+          if (encounterId) {
+            loadEncounterMedications(encounterId);
+          } else {
+            alert('Please load an encounter first');
+          }
+        }
+      });
+
       // Handle "Cancel Update" button
       $('#cancel-update-btn').on('click', function() {
         $('#update-encounter-form').hide();
         $('#encounter-id-input').val('');
         loadedEncounter = null;
-        $('#update-encounter-result').hide();
+        // Clear any result messages completely
+        var $result = $('#update-encounter-result');
+        $result.hide().removeClass('success error').html('');
       });
 
       // Handle update encounter form submission
@@ -669,7 +841,8 @@
         var originalBtnText = $btn.html();
         
         $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Updating...');
-        $result.hide();
+        // Clear any previous result messages
+        $result.hide().removeClass('success error').html('');
         
         // Collect update data (only include fields that have values)
         var updateData = {};
@@ -746,6 +919,168 @@
             .show();
           
           $btn.prop('disabled', false).html(originalBtnText);
+        }
+      });
+
+      // Store all medications globally for filtering
+      window.allMedications = [];
+      
+      // Handle medication filter by encounter
+      $('#medication-filter-encounter').on('change', function() {
+        var encounterId = $(this).val();
+        
+        if (window.allMedications && window.allMedications.length > 0) {
+          // Use cached medications
+          if (typeof window.displayMedications === 'function') {
+            window.displayMedications(window.allMedications, encounterId);
+          }
+        } else {
+          // Reload medications if not cached
+          if (window.smartClient && window.smartClient.patient) {
+            var patientId = window.smartClient.patient.id;
+            var fhirVersion = window.smartClient.state.serverUrl.includes('/r2/') ? 'R2' : 'R4';
+            var medicationResource = fhirVersion === 'R2' ? 'MedicationOrder' : 'MedicationRequest';
+            
+            var url = window.smartClient.state.serverUrl + '/' + medicationResource + '?patient=' + patientId + '&_count=100';
+            var wrappedUrl = window.wrapWithProxy ? window.wrapWithProxy(url) : url;
+            
+            $('#medications').html('<div class="loading-state"><i class="fas fa-spinner fa-spin"></i> Loading medications...</div>');
+            
+            // Get access token
+            var accessToken = null;
+            if (window.smartClient.state && window.smartClient.state.tokenResponse) {
+              if (window.smartClient.state.tokenResponse.access_token) {
+                accessToken = window.smartClient.state.tokenResponse.access_token;
+              } else if (window.smartClient.state.tokenResponse.tokenResponse && window.smartClient.state.tokenResponse.tokenResponse.access_token) {
+                accessToken = window.smartClient.state.tokenResponse.tokenResponse.access_token;
+              }
+            }
+            
+            fetch(wrappedUrl, {
+              method: 'GET',
+              headers: {
+                'Accept': 'application/fhir+json',
+                'Authorization': accessToken ? 'Bearer ' + accessToken : ''
+              }
+            })
+            .then(function(response) {
+              return response.json();
+            })
+            .then(function(bundle) {
+              if (bundle && bundle.entry) {
+                var medications = bundle.entry.map(function(e) { return e.resource; });
+                window.allMedications = medications; // Cache for future filtering
+                if (typeof window.displayMedications === 'function') {
+                  window.displayMedications(medications, encounterId);
+                }
+              }
+            })
+            .catch(function(error) {
+              console.error('Error filtering medications:', error);
+              $('#medications').html('<p class="no-data">Error loading medications</p>');
+            });
+          }
+        }
+      });
+
+      // Handle medication fulfillment
+      $(document).on('click', '.fulfill-med-btn', function() {
+        var $btn = $(this);
+        var medicationId = $btn.data('med-id');
+        var medicationName = decodeURIComponent($btn.data('med-name'));
+        var originalText = $btn.html();
+        
+        if (!medicationId) {
+          alert('Medication ID not found');
+          return;
+        }
+        
+        // Prompt for fulfillment note
+        var defaultNote = 'Fulfilled by FH VPharmacy';
+        var noteText = prompt('Enter a note for this medication fulfillment:\n\n(Leave empty to use default: "' + defaultNote + '")', defaultNote);
+        
+        // If user cancels, don't proceed
+        if (noteText === null) {
+          return;
+        }
+        
+        // Use default if empty
+        if (!noteText || noteText.trim() === '') {
+          noteText = defaultNote;
+        }
+        
+        $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Fulfilling...');
+        
+        // Find the medication in the cached list
+        var medication = null;
+        if (window.allMedications && window.allMedications.length > 0) {
+          medication = window.allMedications.find(function(med) {
+            return med.id === medicationId;
+          });
+        }
+        
+        if (!medication) {
+          alert('Medication not found in cache. Please refresh the page.');
+          $btn.prop('disabled', false).html(originalText);
+          return;
+        }
+        
+        // Fulfill the medication with custom note
+        if (typeof window.fulfillMedication === 'function') {
+          window.fulfillMedication(medicationId, medication, {
+            quantity: { value: 1, unit: 'package' },
+            daysSupply: 30,
+            note: noteText.trim()
+          })
+          .then(function(result) {
+            var successMsg = 'Medication "' + medicationName + '" has been marked as fulfilled by FH.';
+            
+            if (result.warning) {
+              successMsg += '\n\nWarning: ' + result.warning;
+            }
+            
+            if (result.medicationDispense && result.medicationDispense.id) {
+              successMsg += '\n\nMedicationDispense ID: ' + result.medicationDispense.id;
+            }
+            
+            alert(successMsg);
+            
+            // Update the medication status in cache
+            medication.status = 'completed';
+            
+            // Add note to medication if present
+            if (result.medicationRequest && result.medicationRequest.note) {
+              medication.note = result.medicationRequest.note;
+            }
+            
+            // Refresh the medications display
+            var filterValue = $('#medication-filter-encounter').val() || '';
+            if (typeof window.displayMedications === 'function') {
+              window.displayMedications(window.allMedications, filterValue);
+            }
+            
+            // If we're viewing an encounter, refresh the encounter medications list
+            if (loadedEncounter && loadedEncounter.id) {
+              loadEncounterMedications(loadedEncounter.id);
+            } else {
+              var currentEncounterId = $('#encounter-id-input').val().trim();
+              if (currentEncounterId) {
+                loadEncounterMedications(currentEncounterId);
+              }
+            }
+            
+            $btn.prop('disabled', false).html('<i class="fas fa-check"></i> Fulfilled');
+            $btn.css('background', '#6c757d').prop('disabled', true);
+          })
+          .catch(function(error) {
+            console.error('Error fulfilling medication:', error);
+            var errorMsg = error.message || 'Unknown error occurred';
+            alert('Error fulfilling medication: ' + errorMsg);
+            $btn.prop('disabled', false).html(originalText);
+          });
+        } else {
+          alert('fulfillMedication function not available. Please ensure the app is launched from an EHR.');
+          $btn.prop('disabled', false).html(originalText);
         }
       });
     </script>

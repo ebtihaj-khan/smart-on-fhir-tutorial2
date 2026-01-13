@@ -55,7 +55,7 @@
   config.isDeployed = currentEnv === 'deployed';
 
   // OAuth scopes (same for both environments)
-  config.scopes = 'launch online_access openid profile fhirUser patient/Patient.read patient/Observation.read patient/MedicationRequest.read patient/AllergyIntolerance.read patient/Condition.read patient/DocumentReference.read patient/Encounter.read patient/Encounter.write user/Encounter.write';
+  config.scopes = 'launch online_access openid profile fhirUser patient/Patient.read patient/Observation.read patient/MedicationRequest.read patient/MedicationRequest.write patient/MedicationDispense.read patient/MedicationDispense.write patient/AllergyIntolerance.read patient/Condition.read patient/DocumentReference.read patient/Encounter.read patient/Encounter.write user/Encounter.write user/MedicationRequest.write user/MedicationDispense.write';
 
   // Log configuration for debugging
   console.log('=== CONFIGURATION ===');

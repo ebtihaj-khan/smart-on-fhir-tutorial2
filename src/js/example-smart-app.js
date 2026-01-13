@@ -420,6 +420,395 @@
   };
 
   /**
+   * Get medications associated with a specific encounter
+   * @param {string} encounterId - The ID of the encounter
+   * @returns {Promise} Promise that resolves with medications for that encounter
+   */
+  window.getMedicationsByEncounter = function(encounterId) {
+    if (!window.smartClient) {
+      return Promise.reject(new Error('SMART client not initialized. Please launch the app from an EHR.'));
+    }
+
+    var smart = window.smartClient;
+    var fhirVersion = smart.state.serverUrl.includes('/r2/') ? 'R2' : 'R4';
+    var medicationResource = fhirVersion === 'R2' ? 'MedicationOrder' : 'MedicationRequest';
+    
+    // Query medications filtered by encounter
+    // For R4, use 'encounter' parameter; for R2, use 'context' parameter
+    var searchParam = fhirVersion === 'R2' ? 'context' : 'encounter';
+    var url = smart.state.serverUrl + '/' + medicationResource + '?' + searchParam + '=' + encounterId + '&_count=100';
+    var wrappedUrl = wrapWithProxy(url);
+
+    console.log('Fetching medications for encounter:', encounterId);
+    console.log('FHIR Version:', fhirVersion);
+    console.log('Search parameter:', searchParam);
+    console.log('URL:', wrappedUrl);
+
+    // Get access token
+    var accessToken = null;
+    if (smart.state && smart.state.tokenResponse) {
+      if (smart.state.tokenResponse.access_token) {
+        accessToken = smart.state.tokenResponse.access_token;
+      } else if (smart.state.tokenResponse.tokenResponse && smart.state.tokenResponse.tokenResponse.access_token) {
+        accessToken = smart.state.tokenResponse.tokenResponse.access_token;
+      }
+    }
+
+    // Use AbortController for timeout if available, otherwise use Promise.race
+    var controller = null;
+    var timeoutId = null;
+    
+    if (typeof AbortController !== 'undefined') {
+      controller = new AbortController();
+      timeoutId = setTimeout(function() {
+        controller.abort();
+      }, 30000); // 30 second timeout
+    }
+
+    var fetchPromise = fetch(wrappedUrl, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/fhir+json',
+        'Authorization': accessToken ? 'Bearer ' + accessToken : ''
+      },
+      signal: controller ? controller.signal : undefined
+    })
+    .then(function(response) {
+      if (timeoutId) clearTimeout(timeoutId);
+      return response;
+    })
+    .catch(function(error) {
+      if (timeoutId) clearTimeout(timeoutId);
+      if (error.name === 'AbortError') {
+        throw new Error('Request timeout: Medication query took too long (>30 seconds). The server may be slow or the query may be too complex.');
+      }
+      throw error;
+    });
+
+    // If no AbortController, add a timeout wrapper
+    if (!controller) {
+      var timeoutPromise = new Promise(function(resolve, reject) {
+        setTimeout(function() {
+          reject(new Error('Request timeout: Medication query took too long (>30 seconds)'));
+        }, 30000);
+      });
+      
+      return Promise.race([fetchPromise, timeoutPromise]);
+    }
+    
+    return fetchPromise
+    .then(function(response) {
+      if (!response.ok) {
+        throw new Error('Failed to fetch medications: ' + response.status + ' ' + response.statusText);
+      }
+      return response.json();
+    })
+    .then(function(data) {
+      var medications = [];
+      if (data.entry && data.entry.length > 0) {
+        medications = data.entry.map(function(entry) {
+          return entry.resource;
+        });
+      }
+      console.log('Found ' + medications.length + ' medications for encounter ' + encounterId);
+      return medications;
+    })
+    .catch(function(error) {
+      console.error('Error fetching medications for encounter:', error);
+      throw error;
+    });
+  };
+
+  /**
+   * Fulfill a medication by updating its status and creating a MedicationDispense resource
+   * @param {string} medicationRequestId - The ID of the MedicationRequest to fulfill
+   * @param {Object} medicationRequest - The full MedicationRequest resource
+   * @param {Object} options - Optional fulfillment details (quantity, daysSupply, etc.)
+   * @returns {Promise} Promise that resolves when fulfillment is complete
+   */
+  window.fulfillMedication = function(medicationRequestId, medicationRequest, options) {
+    if (!window.smartClient) {
+      return Promise.reject(new Error('SMART client not initialized. Please launch the app from an EHR.'));
+    }
+
+    var smart = window.smartClient;
+    var fhirVersion = smart.state.serverUrl.includes('/r2/') ? 'R2' : 'R4';
+    
+    // Get access token
+    var accessToken = null;
+    if (smart.state && smart.state.tokenResponse) {
+      if (smart.state.tokenResponse.access_token) {
+        accessToken = smart.state.tokenResponse.access_token;
+      } else if (smart.state.tokenResponse.tokenResponse && smart.state.tokenResponse.tokenResponse.access_token) {
+        accessToken = smart.state.tokenResponse.tokenResponse.access_token;
+      }
+    }
+
+    if (!accessToken) {
+      return Promise.reject(new Error('No access token available'));
+    }
+
+    console.log('=== FULFILLING MEDICATION ===');
+    console.log('MedicationRequest ID:', medicationRequestId);
+    console.log('FHIR Version:', fhirVersion);
+
+    // Step 1: Update MedicationRequest status to "completed" (R4) or "completed" (R2)
+    var updateStatusPromise;
+    if (fhirVersion === 'R4') {
+      // For R4, update MedicationRequest status
+      var medicationRequestUrl = smart.state.serverUrl + '/MedicationRequest/' + medicationRequestId;
+      var wrappedMedUrl = wrapWithProxy(medicationRequestUrl);
+
+      // First, read the current MedicationRequest to get its version
+      return fetch(wrappedMedUrl, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/fhir+json',
+          'Authorization': 'Bearer ' + accessToken
+        }
+      })
+      .then(function(response) {
+        if (!response.ok) {
+          throw new Error('Failed to read MedicationRequest: ' + response.status);
+        }
+        return response.json();
+      })
+      .then(function(currentMedRequest) {
+        // Update status to completed
+        currentMedRequest.status = 'completed';
+        
+        // Add note about fulfillment (Annotation structure)
+        if (!currentMedRequest.note) {
+          currentMedRequest.note = [];
+        }
+        var fulfillmentTime = new Date().toISOString();
+        currentMedRequest.note.push({
+          text: 'Fulfilled by FH VPharmacy',
+          time: fulfillmentTime,
+          authorString: 'FH VPharmacy'
+        });
+        
+        // Update with If-Match header for version control
+        var versionId = currentMedRequest.meta?.versionId || '*';
+        
+        console.log('Updating MedicationRequest status to completed with note...');
+        console.log('MedicationRequest with note:', JSON.stringify(currentMedRequest, null, 2));
+        return fetch(wrappedMedUrl, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/fhir+json',
+            'Accept': 'application/fhir+json',
+            'Authorization': 'Bearer ' + accessToken,
+            'If-Match': versionId
+          },
+          body: JSON.stringify(currentMedRequest)
+        });
+      })
+      .then(function(response) {
+        if (!response.ok) {
+          return response.json().then(function(errorData) {
+            throw new Error('Failed to update MedicationRequest: ' + JSON.stringify(errorData));
+          });
+        }
+        return response.json();
+      })
+      .then(function(updatedMedRequest) {
+        console.log('MedicationRequest updated successfully');
+        console.log('Updated MedicationRequest:', JSON.stringify(updatedMedRequest, null, 2));
+        
+        // Step 2: Create MedicationDispense resource
+        return createMedicationDispense(medicationRequest, options)
+          .then(function(dispense) {
+            // Return both the updated request and the dispense
+            return {
+              medicationRequest: updatedMedRequest,
+              medicationDispense: dispense
+            };
+          })
+          .catch(function(error) {
+            // Even if MedicationDispense fails, the MedicationRequest was updated
+            console.warn('MedicationRequest updated but MedicationDispense creation failed:', error);
+            return {
+              medicationRequest: updatedMedRequest,
+              medicationDispense: null,
+              warning: 'MedicationRequest updated but MedicationDispense creation failed: ' + error.message
+            };
+          });
+      });
+    } else {
+      // For R2, MedicationOrder status update might work differently
+      // For now, just create the dispense record
+      console.log('R2 detected - creating MedicationDispense only');
+      return createMedicationDispense(medicationRequest, options);
+    }
+  };
+
+  /**
+   * Create a MedicationDispense resource to record medication fulfillment
+   * @param {Object} medicationRequest - The MedicationRequest that was fulfilled
+   * @param {Object} options - Optional fulfillment details
+   * @returns {Promise} Promise that resolves with the created MedicationDispense
+   */
+  function createMedicationDispense(medicationRequest, options) {
+    if (!window.smartClient) {
+      return Promise.reject(new Error('SMART client not initialized'));
+    }
+
+    var smart = window.smartClient;
+    var fhirVersion = smart.state.serverUrl.includes('/r2/') ? 'R2' : 'R4';
+    var patientId = smart.patient.id;
+
+    // Get access token
+    var accessToken = null;
+    if (smart.state && smart.state.tokenResponse) {
+      if (smart.state.tokenResponse.access_token) {
+        accessToken = smart.state.tokenResponse.access_token;
+      } else if (smart.state.tokenResponse.tokenResponse && smart.state.tokenResponse.tokenResponse.access_token) {
+        accessToken = smart.state.tokenResponse.tokenResponse.access_token;
+      }
+    }
+
+    // Build MedicationDispense resource
+    var medicationDispense = {
+      resourceType: 'MedicationDispense',
+      status: 'completed',
+      medicationCodeableConcept: medicationRequest.medicationCodeableConcept || {
+        text: 'Medication from ' + (medicationRequest.medicationCodeableConcept?.text || 'prescription')
+      },
+      subject: {
+        reference: 'Patient/' + patientId
+      },
+      performer: [{
+        actor: {
+          display: 'Foundation Health',
+          type: 'Organization'
+        }
+      }],
+      whenHandedOver: new Date().toISOString(),
+      quantity: options?.quantity || {
+        value: 1,
+        unit: 'package'
+      },
+      daysSupply: options?.daysSupply || 30,
+      note: [{
+        text: 'Fulfilled by FH VPharmacy'
+      }]
+    };
+
+    // Link to the MedicationRequest
+    if (medicationRequest.id) {
+      medicationDispense.authorizingPrescription = [{
+        reference: 'MedicationRequest/' + medicationRequest.id
+      }];
+    }
+
+    // Link to encounter if present
+    if (medicationRequest.encounter && medicationRequest.encounter.reference) {
+      medicationDispense.context = {
+        reference: medicationRequest.encounter.reference
+      };
+    } else if (medicationRequest.context && medicationRequest.context.reference) {
+      medicationDispense.context = {
+        reference: medicationRequest.context.reference
+      };
+    }
+
+    // Add dosage instructions if available
+    if (medicationRequest.dosageInstruction && medicationRequest.dosageInstruction.length > 0) {
+      medicationDispense.dosageInstruction = medicationRequest.dosageInstruction;
+    }
+
+    console.log('Creating MedicationDispense:', JSON.stringify(medicationDispense, null, 2));
+
+    var url = smart.state.serverUrl + '/MedicationDispense';
+    var wrappedUrl = wrapWithProxy(url);
+
+    return fetch(wrappedUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/fhir+json',
+        'Accept': 'application/fhir+json',
+        'Authorization': 'Bearer ' + accessToken
+      },
+      body: JSON.stringify(medicationDispense)
+    })
+    .then(function(response) {
+      if (!response.ok) {
+        return response.json().then(function(errorData) {
+          console.error('Error creating MedicationDispense:', errorData);
+          throw new Error('Failed to create MedicationDispense: ' + JSON.stringify(errorData));
+        });
+      }
+      return response.json();
+    })
+    .then(function(dispense) {
+      console.log('MedicationDispense created successfully:', dispense.id);
+      console.log('Created MedicationDispense:', JSON.stringify(dispense, null, 2));
+      return dispense;
+    })
+    .catch(function(error) {
+      console.error('Error creating MedicationDispense:', error);
+      // Re-throw so the caller can handle it
+      throw error;
+    });
+  }
+
+  /**
+   * Get MedicationDispense resources for a specific MedicationRequest
+   * @param {string} medicationRequestId - The ID of the MedicationRequest
+   * @returns {Promise} Promise that resolves with MedicationDispense resources
+   */
+  window.getMedicationDispenses = function(medicationRequestId) {
+    if (!window.smartClient) {
+      return Promise.reject(new Error('SMART client not initialized. Please launch the app from an EHR.'));
+    }
+
+    var smart = window.smartClient;
+    var url = smart.state.serverUrl + '/MedicationDispense?authorizingPrescription=MedicationRequest/' + medicationRequestId + '&_count=100';
+    var wrappedUrl = wrapWithProxy(url);
+
+    console.log('Fetching MedicationDispense for MedicationRequest:', medicationRequestId);
+
+    // Get access token
+    var accessToken = null;
+    if (smart.state && smart.state.tokenResponse) {
+      if (smart.state.tokenResponse.access_token) {
+        accessToken = smart.state.tokenResponse.access_token;
+      } else if (smart.state.tokenResponse.tokenResponse && smart.state.tokenResponse.tokenResponse.access_token) {
+        accessToken = smart.state.tokenResponse.tokenResponse.access_token;
+      }
+    }
+
+    return fetch(wrappedUrl, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/fhir+json',
+        'Authorization': accessToken ? 'Bearer ' + accessToken : ''
+      }
+    })
+    .then(function(response) {
+      if (!response.ok) {
+        throw new Error('Failed to fetch MedicationDispense: ' + response.status + ' ' + response.statusText);
+      }
+      return response.json();
+    })
+    .then(function(data) {
+      var dispenses = [];
+      if (data.entry && data.entry.length > 0) {
+        dispenses = data.entry.map(function(entry) {
+          return entry.resource;
+        });
+      }
+      console.log('Found ' + dispenses.length + ' MedicationDispense resources for MedicationRequest ' + medicationRequestId);
+      return dispenses;
+    })
+    .catch(function(error) {
+      console.error('Error fetching MedicationDispense:', error);
+      throw error;
+    });
+  };
+
+  /**
    * Helper function to find available Encounters for the current patient
    * @param {number} count - Maximum number of encounters to return (default: 50)
    * @returns {Promise} Promise that resolves with available encounters
@@ -1170,9 +1559,18 @@
         makeRequest(medUrl, 'Medications').then(function(bundle) {
           if (bundle && bundle.entry) {
             var medications = bundle.entry.map(function(e) { return e.resource; });
+            
+            // Store medications globally for filtering
+            if (typeof window !== 'undefined') {
+              window.allMedications = medications;
+            }
+            
             displayMedications(medications);
+            
+            // Populate encounter filter dropdown
+            populateEncounterFilter(medications);
           } else {
-            $('#meds').html('<p class="no-data">No medications available</p>');
+            $('#medications').html('<p class="no-data">No medications available</p>');
           }
         });
         
@@ -1250,8 +1648,69 @@
     $('#patient-name-display').html(fullName || 'Patient');
   }
   
-  function displayMedications(medications) {
+  // Helper function to populate encounter filter dropdown from medications
+  function populateEncounterFilter(medications) {
+    var encounterMap = {};
+    
+    medications.forEach(function(med) {
+      var encounterId = null;
+      if (med.encounter && med.encounter.reference) {
+        var parts = med.encounter.reference.split('/');
+        if (parts.length > 1) {
+          encounterId = parts[parts.length - 1];
+        }
+      } else if (med.context && med.context.reference) {
+        // R2 might use context
+        var parts = med.context.reference.split('/');
+        if (parts.length > 1) {
+          encounterId = parts[parts.length - 1];
+        }
+      }
+      
+      if (encounterId) {
+        encounterMap[encounterId] = true;
+      }
+    });
+    
+    var $filter = $('#medication-filter-encounter');
+    $filter.empty();
+    $filter.append('<option value="">All Medications</option>');
+    
+    // Sort encounter IDs
+    var encounterIds = Object.keys(encounterMap).sort();
+    encounterIds.forEach(function(encounterId) {
+      $filter.append('<option value="' + encounterId + '">Encounter: ' + encounterId + '</option>');
+    });
+    
+    if (encounterIds.length === 0) {
+      $filter.append('<option value="">No encounters found</option>');
+    }
+  }
+
+  // Make displayMedications globally accessible
+  window.displayMedications = function(medications, filterEncounterId) {
     console.log('displayMedications called with', medications.length, 'items');
+    
+    // Filter by encounter if specified
+    if (filterEncounterId && filterEncounterId.trim() !== '') {
+      medications = medications.filter(function(med) {
+        var medEncounterId = null;
+        if (med.encounter && med.encounter.reference) {
+          var parts = med.encounter.reference.split('/');
+          if (parts.length > 1) {
+            medEncounterId = parts[parts.length - 1];
+          }
+        } else if (med.context && med.context.reference) {
+          var parts = med.context.reference.split('/');
+          if (parts.length > 1) {
+            medEncounterId = parts[parts.length - 1];
+          }
+        }
+        return medEncounterId === filterEncounterId;
+      });
+      console.log('Filtered to', medications.length, 'medications for encounter', filterEncounterId);
+    }
+    
     var html = '';
     if (medications && medications.length > 0) {
       // Sort medications by last updated date (most recent first)
@@ -1309,6 +1768,40 @@
           validUntil = new Date(med.validityPeriod.end).toLocaleDateString();
         }
         
+        // Extract encounter reference if present
+        var encounterRef = '';
+        var encounterId = null;
+        if (med.encounter && med.encounter.reference) {
+          encounterRef = med.encounter.reference;
+          // Extract just the ID part
+          var parts = encounterRef.split('/');
+          if (parts.length > 1) {
+            encounterId = parts[parts.length - 1];
+            encounterRef = 'Encounter: ' + encounterId;
+          }
+        } else if (med.context && med.context.reference) {
+          // R2 might use context instead of encounter
+          encounterRef = med.context.reference;
+          var parts = encounterRef.split('/');
+          if (parts.length > 1) {
+            encounterId = parts[parts.length - 1];
+            encounterRef = 'Encounter: ' + encounterId;
+          }
+        }
+        
+        // Extract notes if present (Annotation structure)
+        var notes = '';
+        if (med.note && med.note.length > 0) {
+          notes = med.note.map(function(note) {
+            var noteText = note.text || '';
+            var noteAuthor = note.authorString ? ' (' + note.authorString + ')' : '';
+            var noteTime = note.time ? ' [' + new Date(note.time).toLocaleString() + ']' : '';
+            return noteText + noteAuthor + noteTime;
+          }).filter(function(text) {
+            return text.length > 0;
+          }).join('; ');
+        }
+        
         var meta = status;
         if (intent) meta += ' • ' + intent;
         if (priority) meta += ' • ' + priority;
@@ -1316,15 +1809,33 @@
         if (authoredOn) meta += ' • Authored: ' + authoredOn;
         if (validFrom) meta += ' • Valid from: ' + validFrom;
         if (validUntil) meta += ' • Valid until: ' + validUntil;
+        if (encounterRef) meta += ' • ' + encounterRef;
+        if (notes) meta += ' • Note: ' + notes;
         
-        html += '<li><strong>' + medName + '</strong><div class="item-meta">' + meta + '</div></li>';
+        // Add fulfill button for active medications
+        var fulfillButton = '';
+        var isFulfilled = med.status === 'completed' || med.status === 'fulfilled';
+        
+        if (isFulfilled) {
+          fulfillButton = '<span style="margin-left: 10px; padding: 4px 12px; background: #6c757d; color: white; border-radius: 4px; font-size: 0.85em; display: inline-block;">' +
+                         '<i class="fas fa-check-circle"></i> Fulfilled</span>';
+        } else if (med.status && med.status !== 'cancelled' && med.status !== 'stopped' && med.status !== 'entered-in-error') {
+          fulfillButton = '<button class="fulfill-med-btn" data-med-id="' + med.id + '" data-med-name="' + 
+                         encodeURIComponent(medName) + '" style="margin-left: 10px; padding: 4px 12px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85em; white-space: nowrap;">' +
+                         '<i class="fas fa-check"></i> Fulfill</button>';
+        }
+        
+        html += '<li style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">' +
+                '<div style="flex: 1;"><strong>' + medName + '</strong><div class="item-meta">' + meta + '</div></div>' +
+                fulfillButton +
+                '</li>';
       });
       html += '</ul>';
     } else {
       html = '<div class="no-data"><i class="fas fa-info-circle"></i><span>No medications available</span></div>';
     }
     $('#medications').html(html);
-  }
+  };
   
   function displayAllergies(allergies) {
     var html = '';
