@@ -1,11 +1,24 @@
 (function(window){
-  // CORS Proxy configuration - DISABLED
-  var USE_PROXY = false;  // Set to false to disable proxy
-  var PROXY_URL = 'http://localhost:8081/';  // CORS proxy endpoint (not used when disabled)
+  // CORS Proxy configuration
+  // Proxy is only used for Cerner requests (which have CORS restrictions)
+  // SMART Health IT and other sandboxes don't need the proxy
+  var USE_PROXY = true;  // Enable proxy for Cerner requests
+  var PROXY_URL = 'http://localhost:8081/';  // CORS proxy endpoint
   
   // Helper function to wrap URLs with proxy
   function wrapWithProxy(url) {
-    // Proxy is disabled - return URL as-is
+    if (!USE_PROXY) return url;
+    
+    // Only proxy Cerner FHIR requests (they have CORS restrictions)
+    // Don't proxy SMART Health IT or other sandboxes
+    if (url.includes('fhir-ehr-code.cerner.com') || 
+        url.includes('fhir-ehr.cerner.com') ||
+        url.includes('cerner.com')) {
+      console.log('[PROXY] Wrapping Cerner URL with proxy:', url);
+      return PROXY_URL + url;
+    }
+    
+    // For non-Cerner URLs (like SMART Health IT), return as-is
     return url;
   }
   
