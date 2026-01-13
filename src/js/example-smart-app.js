@@ -1,24 +1,39 @@
 (function(window){
   // CORS Proxy configuration
-  // Proxy is only used for Cerner requests (which have CORS restrictions)
-  // SMART Health IT and other sandboxes don't need the proxy
-  var USE_PROXY = true;  // Enable proxy for Cerner requests
+  // Proxy is only needed for Cerner requests when running on deployed domains
+  // On localhost, Cerner may allow CORS, so proxy isn't needed
+  // SMART Health IT and other sandboxes never need the proxy
   var PROXY_URL = 'http://localhost:8081/';  // CORS proxy endpoint
+  
+  // Helper function to determine if we should use proxy
+  function shouldUseProxy(url) {
+    // Only proxy Cerner URLs
+    var isCernerUrl = url.includes('fhir-ehr-code.cerner.com') || 
+                      url.includes('fhir-ehr.cerner.com') ||
+                      url.includes('cerner.com');
+    
+    if (!isCernerUrl) {
+      return false; // Never proxy non-Cerner URLs
+    }
+    
+    // For Cerner URLs, only use proxy when NOT on localhost
+    // On localhost, Cerner may allow CORS, so proxy isn't needed
+    var isLocalhost = window.location.hostname === 'localhost' || 
+                      window.location.hostname === '127.0.0.1' ||
+                      window.location.hostname === '';
+    
+    // Use proxy for Cerner only when deployed (not localhost)
+    return !isLocalhost;
+  }
   
   // Helper function to wrap URLs with proxy
   function wrapWithProxy(url) {
-    if (!USE_PROXY) return url;
-    
-    // Only proxy Cerner FHIR requests (they have CORS restrictions)
-    // Don't proxy SMART Health IT or other sandboxes
-    if (url.includes('fhir-ehr-code.cerner.com') || 
-        url.includes('fhir-ehr.cerner.com') ||
-        url.includes('cerner.com')) {
-      console.log('[PROXY] Wrapping Cerner URL with proxy:', url);
+    if (shouldUseProxy(url)) {
+      console.log('[PROXY] Wrapping Cerner URL with proxy (deployed environment):', url);
       return PROXY_URL + url;
     }
     
-    // For non-Cerner URLs (like SMART Health IT), return as-is
+    // For localhost or non-Cerner URLs, return as-is
     return url;
   }
   
