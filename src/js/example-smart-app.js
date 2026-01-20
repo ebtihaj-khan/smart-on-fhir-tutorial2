@@ -1537,7 +1537,12 @@
             fullName = (given + ' ' + family).trim();
           }
           
-          displayPatient(fullName || 'Unknown', p.gender || 'Unknown', p.birthDate || 'Unknown');
+          // Store the raw patient for later use if needed
+          if (typeof window !== 'undefined') {
+            window.currentPatient = p;
+          }
+          
+          displayPatient(fullName || 'Unknown', p.gender || 'Unknown', p.birthDate || 'Unknown', p);
         }).catch(function(error) {
           console.warn('Patient load failed:', error);
           displayPatient('Unknown', 'Unknown', 'Unknown');
@@ -1569,6 +1574,16 @@
             
             // Populate encounter filter dropdown
             populateEncounterFilter(medications);
+            
+            // Populate prescription card with first active medication
+            if (medications.length > 0) {
+              console.log('Populating prescription card with medication:', medications[0]);
+              try {
+                populatePrescriptionCard(medications[0], smart, patientId, buildUrl, makeRequest, wrapWithProxy);
+              } catch (error) {
+                console.error('Error populating prescription card:', error);
+              }
+            }
           } else {
             $('#medications').html('<p class="no-data">No medications available</p>');
           }
@@ -1637,16 +1652,598 @@
   };
 
   // Helper function to display patient demographics
-  function displayPatient(fullName, gender, birthdate) {
-    console.log('displayPatient called:', fullName, gender, birthdate);
+  function displayPatient(fullName, gender, birthdate, patient) {
+    console.log('displayPatient called:', fullName, gender, birthdate, patient);
     $('#holder').addClass('show');  // Show the main content
     $('#loading').hide();
-    $('#fname').html(fullName.split(' ')[0] || '-');
-    $('#lname').html(fullName.split(' ').slice(1).join(' ') || '-');
+    
+    // Basic fields
+    var safeFullName = fullName || 'Patient';
+    $('#patient-name-display').html(safeFullName);
     $('#gender').html(toSentenceCase(gender) || '-');
     $('#birthdate').html(birthdate || '-');
-    $('#patient-name-display').html(fullName || 'Patient');
+    
+    // Derive name parts
+    var firstName = '-';
+    var middleName = '-';
+    var lastName = '-';
+    
+    if (patient && patient.name && patient.name[0]) {
+      var givenArr = Array.isArray(patient.name[0].given) ? patient.name[0].given : (patient.name[0].given ? [patient.name[0].given] : []);
+      var familyVal = Array.isArray(patient.name[0].family) ? patient.name[0].family.join(' ') : (patient.name[0].family || '');
+      
+      if (givenArr.length > 0) {
+        firstName = givenArr[0];
+      }
+      if (givenArr.length > 1) {
+        middleName = givenArr.slice(1).join(' ');
+      }
+      lastName = familyVal || '-';
+    } else {
+      // Fallback: split the full name if patient object not available
+      var parts = safeFullName.split(' ');
+      if (parts.length > 0) {
+        firstName = parts[0];
+      }
+      if (parts.length > 2) {
+        middleName = parts.slice(1, parts.length - 1).join(' ');
+      }
+      if (parts.length > 1) {
+        lastName = parts[parts.length - 1];
+      }
+    }
+    
+    $('#fname').html(firstName || '-');
+    $('#mname').html(middleName || '-');
+    $('#lname').html(lastName || '-');
+    
+    // EHR Patient ID
+    var ehrId = patient && patient.id ? patient.id : '-';
+    $('#ehr-patient-id').html(ehrId);
+    
+    // Patient status (active/inactive)
+    var statusText = '-';
+    if (typeof patient?.active === 'boolean') {
+      statusText = patient.active ? 'Active' : 'Inactive';
+    }
+    $('#patient-status').html(statusText);
+    
+    // Address fields
+    var address1 = '-';
+    var address2 = '-';
+    var city = '-';
+    var state = '-';
+    var zip = '-';
+    
+    if (patient && patient.address && patient.address[0]) {
+      var addr = patient.address[0];
+      if (addr.line && addr.line.length > 0) {
+        address1 = addr.line[0] || '-';
+        if (addr.line.length > 1) {
+          address2 = addr.line[1] || '-';
+        }
+      }
+      city = addr.city || '-';
+      state = addr.state || '-';
+      zip = addr.postalCode || '-';
+    }
+    
+    $('#address1').html(address1);
+    $('#address2').html(address2);
+    $('#city').html(city);
+    $('#state').html(state);
+    $('#zip').html(zip);
+    
+    // Contact: telephone and email
+    var telephone = '-';
+    var email = '-';
+    if (patient && patient.telecom && patient.telecom.length > 0) {
+      patient.telecom.forEach(function(t) {
+        if (t.system === 'phone' && telephone === '-' && t.value) {
+          telephone = t.value;
+        } else if (t.system === 'email' && email === '-' && t.value) {
+          email = t.value;
+        }
+      });
+    }
+    $('#telephone').html(telephone);
+    $('#email').html(email);
+    
+    // Default summary values; updated later when other resources load
+    $('#patient-allergies').html($('#patient-allergies').html() || '-');
+    $('#patient-conditions').html($('#patient-conditions').html() || '-');
+    $('#medications-supplements').html($('#medications-supplements').html() || '-');
+    
+    // Custom preferences from extensions (best-effort)
+    var prefersChildSafetyCap = '-';
+    var smsOptin = '-';
+    if (patient && Array.isArray(patient.extension)) {
+      patient.extension.forEach(function(ext) {
+        if (!ext || !ext.url) return;
+        var urlLower = String(ext.url).toLowerCase();
+        if (urlLower.indexOf('child') !== -1 && urlLower.indexOf('safety') !== -1) {
+          // Try boolean or string value
+          if (typeof ext.valueBoolean === 'boolean') {
+            prefersChildSafetyCap = ext.valueBoolean ? 'Yes' : 'No';
+          } else if (ext.valueString) {
+            prefersChildSafetyCap = ext.valueString;
+          }
+        } else if (urlLower.indexOf('sms') !== -1 || urlLower.indexOf('text-message') !== -1) {
+          if (typeof ext.valueBoolean === 'boolean') {
+            smsOptin = ext.valueBoolean ? 'Yes' : 'No';
+          } else if (ext.valueString) {
+            smsOptin = ext.valueString;
+          }
+        }
+      });
+    }
+    $('#prefers-child-safety-cap').html(prefersChildSafetyCap);
+    $('#sms-optin').html(smsOptin);
   }
+
+  // Helper to safely set a text field on the prescription card
+  function setPrescriptionField(id, value) {
+    $('#' + id).html((value !== null && value !== undefined && value !== '') ? value : '-');
+  }
+
+  // Public helper to display prescription details in the Prescription card.
+  // Expects an object with the following (matching your list):
+  // cancelledAt, createdDate, daysSupply, dispenseAsWrittenCode, expiryDate,
+  // FH_PatientID, FW_PatientID, initialFillDate, initialFillDaysSupply,
+  // initialFillQuantity, instructions, lastFillDate, medicationBrandName,
+  // medicationForm, medicationName, medicationStrength, ndc, numberOfFills,
+  // prescriberAddressLine1, prescriberAddressLine2, prescriberCity,
+  // prescriberName, prescriberRegistrationBody, prescriberRegistrationNumber,
+  // prescriberState, prescriberTelephone, prescriberZip, quantityPerFill,
+  // rxId, schedule
+  // Function to extract prescription data from MedicationRequest and populate card
+  function populatePrescriptionCard(medicationRequest, smartClient, patientId, buildUrlFn, makeRequestFn, wrapWithProxyFn) {
+    console.log('populatePrescriptionCard called with:', medicationRequest);
+    if (!medicationRequest) {
+      console.warn('No medication request provided');
+      window.displayPrescriptionCard(null);
+      return;
+    }
+    
+    var prescription = {};
+    
+    // Basic prescription info from MedicationRequest
+    prescription.rxId = medicationRequest.id || '-';
+    prescription.createdDate = medicationRequest.authoredOn ? new Date(medicationRequest.authoredOn).toLocaleDateString() : '-';
+    prescription.cancelledAt = (medicationRequest.status === 'cancelled' && medicationRequest.meta && medicationRequest.meta.lastUpdated) 
+      ? new Date(medicationRequest.meta.lastUpdated).toLocaleDateString() : '-';
+    prescription.schedule = medicationRequest.status || '-';
+    
+    console.log('Extracted basic prescription data:', prescription);
+    
+    // Dispense information
+    if (medicationRequest.dispenseRequest) {
+      prescription.daysSupply = medicationRequest.dispenseRequest.expectedSupplyDuration ? 
+        medicationRequest.dispenseRequest.expectedSupplyDuration.value + ' ' + 
+        (medicationRequest.dispenseRequest.expectedSupplyDuration.unit || 'days') : '-';
+      prescription.numberOfFills = medicationRequest.dispenseRequest.numberOfRepeatsAllowed || '-';
+      prescription.quantityPerFill = medicationRequest.dispenseRequest.quantity ? 
+        medicationRequest.dispenseRequest.quantity.value + ' ' + 
+        (medicationRequest.dispenseRequest.quantity.unit || '') : '-';
+    } else {
+      prescription.daysSupply = '-';
+      prescription.numberOfFills = '-';
+      prescription.quantityPerFill = '-';
+    }
+    
+    // Dispense as written (substitution)
+    if (medicationRequest.substitution && medicationRequest.substitution.allowed) {
+      prescription.dispenseAsWrittenCode = medicationRequest.substitution.allowed === false ? 'DAW' : '-';
+    } else {
+      prescription.dispenseAsWrittenCode = '-';
+    }
+    
+    // Initial fill dates (from MedicationDispense if available, otherwise use authoredOn)
+    prescription.initialFillDate = medicationRequest.authoredOn ? new Date(medicationRequest.authoredOn).toLocaleDateString() : '-';
+    prescription.initialFillQuantity = prescription.quantityPerFill;
+    prescription.initialFillDaysSupply = prescription.daysSupply;
+    
+    // Last fill date and expiry (would need MedicationDispense resources)
+    prescription.lastFillDate = '-';
+    prescription.expiryDate = '-';
+    
+    // Patient IDs
+    prescription.FH_PatientID = patientId || '-';
+    prescription.FW_PatientID = patientId || '-';
+    
+    // Medication information
+    var medicationName = '-';
+    var medicationBrandName = '-';
+    var medicationStrength = '-';
+    var medicationForm = '-';
+    var ndc = '-';
+    
+    // Function to parse medication name text to extract strength and form
+    function parseMedicationName(medName) {
+      if (!medName || medName === '-') return;
+      
+      console.log('Parsing medication name for strength and form:', medName);
+      
+      // Common medication forms to look for (case insensitive)
+      var forms = ['Injection', 'Tablet', 'Capsule', 'Solution', 'Suspension', 'Cream', 'Ointment', 
+                   'Gel', 'Lotion', 'Spray', 'Drops', 'Patch', 'Film', 'Powder', 'Syrup', 'Elixir',
+                   'Inj', 'Tab', 'Cap', 'Susp'];
+      
+      // Try to extract form (usually at the end, case insensitive)
+      var medNameUpper = medName.toUpperCase();
+      forms.forEach(function(form) {
+        var formUpper = form.toUpperCase();
+        if (medNameUpper.includes(formUpper) && medicationForm === '-') {
+          // Find the actual case from the original string
+          var formIndex = medNameUpper.indexOf(formUpper);
+          if (formIndex >= 0) {
+            // Check if it's at the end or followed by space/end of string
+            var afterForm = medNameUpper.substring(formIndex + formUpper.length);
+            if (afterForm.trim() === '' || afterForm.match(/^\s/)) {
+              medicationForm = medName.substring(formIndex, formIndex + form.length);
+              console.log('Extracted form:', medicationForm);
+            }
+          }
+        }
+      });
+      
+      // Try to extract strength (look for patterns like "X MG/ML", "X MG", "X%", etc.)
+      // Pattern: number followed by unit (MG, ML, G, etc.) optionally with "/" and another unit
+      // Prefer patterns with "/" (ratio) as they're more likely to be strength
+      var strengthPatterns = [
+        // Ratio patterns (e.g., "5 MG/ML", "10 MG/1 ML")
+        /(\d+(?:\.\d+)?\s*(?:MG|ML|G|MCG|IU|UNITS?)\s*\/\s*\d*(?:\.\d+)?\s*(?:ML|G|MG|MCG|IU)?)/gi,
+        // Percentage
+        /(\d+(?:\.\d+)?\s*%)/gi,
+        // Simple strength with MG (e.g., "5 MG")
+        /(\d+(?:\.\d+)?\s*MG\b)/gi
+      ];
+      
+      var foundStrength = false;
+      strengthPatterns.forEach(function(pattern) {
+        if (foundStrength) return;
+        
+        var matches = medName.match(pattern);
+        if (matches && matches.length > 0) {
+          // Filter out volume measurements (like "10 ML" at the start)
+          var strengthMatch = matches.find(function(m) {
+            var trimmed = m.trim();
+            // Prefer ratios or percentages
+            if (trimmed.includes('/') || trimmed.includes('%')) {
+              return true;
+            }
+            // Prefer MG over ML for strength
+            if (trimmed.toUpperCase().includes('MG')) {
+              return true;
+            }
+            return false;
+          });
+          
+          if (strengthMatch) {
+            medicationStrength = strengthMatch.trim();
+            foundStrength = true;
+            console.log('Extracted strength:', medicationStrength);
+          }
+        }
+      });
+    }
+    
+    // Function to extract strength and form from Medication resource
+    function extractMedicationDetails(medicationResource) {
+      if (!medicationResource) return;
+      
+      // Extract form from Medication.doseForm
+      if (medicationResource.form) {
+        if (medicationResource.form.coding && medicationResource.form.coding[0]) {
+          medicationForm = medicationResource.form.coding[0].display || 
+                          medicationResource.form.coding[0].code || '-';
+        } else if (medicationResource.form.text) {
+          medicationForm = medicationResource.form.text;
+        }
+      }
+      
+      // Extract strength from Medication.ingredient[].strength
+      if (medicationResource.ingredient && medicationResource.ingredient.length > 0) {
+        medicationResource.ingredient.forEach(function(ingredient) {
+          if (ingredient.strength) {
+            var strengthParts = [];
+            
+            // Handle strength as Ratio
+            if (ingredient.strength.numerator && ingredient.strength.denominator) {
+              var numValue = ingredient.strength.numerator.value || '';
+              var numUnit = ingredient.strength.numerator.unit || '';
+              var denValue = ingredient.strength.denominator.value || '';
+              var denUnit = ingredient.strength.denominator.unit || '';
+              
+              if (numValue && numUnit) {
+                strengthParts.push(numValue + ' ' + numUnit);
+              }
+              if (denValue && denUnit) {
+                strengthParts.push('per ' + denValue + ' ' + denUnit);
+              }
+            } 
+            // Handle strength as Quantity
+            else if (ingredient.strength.value !== undefined) {
+              var value = ingredient.strength.value || '';
+              var unit = ingredient.strength.unit || '';
+              if (value) {
+                strengthParts.push(value + (unit ? ' ' + unit : ''));
+              }
+            }
+            
+            if (strengthParts.length > 0) {
+              medicationStrength = strengthParts.join(' ');
+            }
+          }
+        });
+      }
+      
+      // Extract NDC from Medication.code (if available)
+      if (medicationResource.code && medicationResource.code.coding) {
+        medicationResource.code.coding.forEach(function(coding) {
+          if (coding.system === 'http://hl7.org/fhir/sid/ndc' || 
+              coding.system === 'urn:oid:2.16.840.1.113883.6.69') {
+            ndc = coding.code || '-';
+          }
+        });
+      }
+    }
+    
+    if (medicationRequest.medicationCodeableConcept) {
+      if (medicationRequest.medicationCodeableConcept.text) {
+        medicationName = medicationRequest.medicationCodeableConcept.text;
+        // Try to parse strength and form from the text
+        parseMedicationName(medicationName);
+      } else if (medicationRequest.medicationCodeableConcept.coding && medicationRequest.medicationCodeableConcept.coding[0]) {
+        medicationName = medicationRequest.medicationCodeableConcept.coding[0].display || 
+                         medicationRequest.medicationCodeableConcept.coding[0].code;
+        // Try to parse strength and form from the display name
+        if (medicationRequest.medicationCodeableConcept.coding[0].display) {
+          parseMedicationName(medicationRequest.medicationCodeableConcept.coding[0].display);
+        }
+      }
+      
+      // Try to extract strength and form from coding
+      if (medicationRequest.medicationCodeableConcept.coding) {
+        medicationRequest.medicationCodeableConcept.coding.forEach(function(coding) {
+          if (coding.system === 'http://www.nlm.nih.gov/research/umls/rxnorm') {
+            medicationBrandName = coding.display || medicationBrandName;
+            // Also try to parse from brand name
+            if (coding.display && medicationStrength === '-') {
+              parseMedicationName(coding.display);
+            }
+          }
+        });
+      }
+    } else if (medicationRequest.medicationReference) {
+      // Medication is referenced - fetch the Medication resource
+      if (medicationRequest.medicationReference.display) {
+        medicationName = medicationRequest.medicationReference.display;
+        // Try to parse strength and form from display name first
+        parseMedicationName(medicationName);
+      }
+      
+      // Extract Medication ID from reference
+      var medicationRef = medicationRequest.medicationReference.reference || '';
+      var medicationId = medicationRef.split('/').pop();
+      
+      if (medicationId && makeRequestFn && wrapWithProxyFn) {
+        console.log('Fetching Medication resource:', medicationId);
+        var medicationUrl = smartClient.state.serverUrl + '/Medication/' + medicationId;
+        medicationUrl = wrapWithProxyFn(medicationUrl);
+        
+        makeRequestFn(medicationUrl, 'Medication').then(function(response) {
+          var medicationResource = null;
+          if (response && response.resourceType === 'Medication') {
+            medicationResource = response;
+          } else if (response && response.entry && response.entry[0]) {
+            medicationResource = response.entry[0].resource;
+          }
+          
+          if (medicationResource) {
+            console.log('Medication resource fetched:', medicationResource);
+            extractMedicationDetails(medicationResource);
+            
+            // Update prescription with extracted details
+            prescription.medicationStrength = medicationStrength;
+            prescription.medicationForm = medicationForm;
+            prescription.ndc = ndc;
+            
+            // Update the card
+            window.displayPrescriptionCard(prescription);
+          }
+        }).catch(function(error) {
+          console.warn('Failed to fetch Medication resource:', error);
+          // Continue with what we have (parsed from name)
+        });
+      }
+    }
+    
+    // Extract strength and form from dosage instructions as fallback
+    if (medicationRequest.dosageInstruction && medicationRequest.dosageInstruction[0]) {
+      var dosage = medicationRequest.dosageInstruction[0];
+      if (dosage.text) {
+        prescription.instructions = dosage.text;
+      }
+      // Only use dosage strength if we don't have medication strength
+      if (medicationStrength === '-' && dosage.doseAndRate && dosage.doseAndRate[0] && dosage.doseAndRate[0].doseQuantity) {
+        var dose = dosage.doseAndRate[0].doseQuantity;
+        medicationStrength = (dose.value || '') + ' ' + (dose.unit || '');
+      }
+    }
+    
+    prescription.medicationName = medicationName;
+    prescription.medicationBrandName = medicationBrandName;
+    prescription.medicationStrength = medicationStrength;
+    prescription.medicationForm = medicationForm;
+    prescription.ndc = ndc;
+    prescription.instructions = prescription.instructions || '-';
+    
+    // Prescriber information - need to fetch Practitioner resource
+    prescription.prescriberName = '-';
+    prescription.prescriberRegistrationBody = '-';
+    prescription.prescriberRegistrationNumber = '-';
+    prescription.prescriberTelephone = '-';
+    prescription.prescriberAddressLine1 = '-';
+    prescription.prescriberAddressLine2 = '-';
+    prescription.prescriberCity = '-';
+    prescription.prescriberState = '-';
+    prescription.prescriberZip = '-';
+    
+    // First, display the prescription card with what we have so far
+    console.log('Displaying prescription card with initial data');
+    window.displayPrescriptionCard(prescription);
+    
+    // Fetch prescriber if reference exists (async, will update card later)
+    if (medicationRequest.requester && medicationRequest.requester.reference && makeRequestFn && wrapWithProxyFn) {
+      var prescriberRef = medicationRequest.requester.reference;
+      var prescriberId = prescriberRef.split('/').pop();
+      var prescriberType = prescriberRef.includes('Practitioner') ? 'Practitioner' : 
+                          prescriberRef.includes('Organization') ? 'Organization' : null;
+      
+      if (prescriberType && prescriberId) {
+        console.log('Fetching prescriber:', prescriberType, prescriberId);
+        // Build URL for prescriber resource
+        var prescriberUrl = smartClient.state.serverUrl + '/' + prescriberType + '/' + prescriberId;
+        prescriberUrl = wrapWithProxyFn(prescriberUrl);
+        makeRequestFn(prescriberUrl, 'Prescriber').then(function(response) {
+          var prescriber = null;
+          // Handle both Bundle and direct resource responses
+          if (response && response.entry && response.entry[0]) {
+            prescriber = response.entry[0].resource;
+          } else if (response && response.resourceType === prescriberType) {
+            prescriber = response;
+          } else if (response && response.resourceType === 'Bundle' && response.entry && response.entry[0]) {
+            prescriber = response.entry[0].resource;
+          }
+          
+          if (prescriber) {
+            // Extract prescriber name
+            if (prescriber.name) {
+              if (Array.isArray(prescriber.name)) {
+                var name = prescriber.name[0];
+                prescription.prescriberName = (name.given ? name.given.join(' ') : '') + 
+                                            (name.family ? ' ' + name.family : '');
+              } else {
+                prescription.prescriberName = prescriber.name.text || '-';
+              }
+            }
+            
+            // Extract registration info
+            if (prescriber.qualification && prescriber.qualification[0]) {
+              var qual = prescriber.qualification[0];
+              if (qual.issuer && qual.issuer.display) {
+                prescription.prescriberRegistrationBody = qual.issuer.display;
+              }
+              if (qual.identifier && qual.identifier.value) {
+                prescription.prescriberRegistrationNumber = qual.identifier.value;
+              }
+            }
+            
+            // Extract contact info
+            if (prescriber.telecom) {
+              prescriber.telecom.forEach(function(contact) {
+                if (contact.system === 'phone') {
+                  prescription.prescriberTelephone = contact.value || '-';
+                }
+              });
+            }
+            
+            // Extract address
+            if (prescriber.address && prescriber.address[0]) {
+              var addr = prescriber.address[0];
+              prescription.prescriberAddressLine1 = (addr.line && addr.line[0]) || '-';
+              prescription.prescriberAddressLine2 = (addr.line && addr.line[1]) || '-';
+              prescription.prescriberCity = addr.city || '-';
+              prescription.prescriberState = addr.state || '-';
+              prescription.prescriberZip = addr.postalCode || '-';
+            }
+            
+            // Update the card with prescriber info
+            console.log('Updating prescription card with prescriber info');
+            window.displayPrescriptionCard(prescription);
+          } else {
+            console.warn('No prescriber data found in response');
+            // Prescription already displayed, no need to update
+          }
+        }).catch(function(error) {
+          console.warn('Failed to fetch prescriber:', error);
+          // Prescription already displayed, no need to update
+        });
+      } else {
+        console.log('No valid prescriber type/ID found');
+        // Prescription already displayed
+      }
+    } else {
+      console.log('No prescriber reference or helper functions available');
+      // Prescription already displayed
+    }
+  }
+  
+  window.displayPrescriptionCard = function(prescription) {
+    console.log('displayPrescriptionCard called with:', prescription);
+    if (!prescription) {
+      console.log('Clearing prescription card');
+      // Clear all fields if no prescription is provided
+      [
+        'rxId', 'createdDate', 'cancelledAt', 'schedule', 'daysSupply',
+        'numberOfFills', 'quantityPerFill', 'dispenseAsWrittenCode',
+        'initialFillDate', 'initialFillQuantity', 'initialFillDaysSupply',
+        'lastFillDate', 'expiryDate', 'FH_PatientID', 'FW_PatientID',
+        'medicationName', 'medicationBrandName', 'medicationStrength',
+        'medicationForm', 'ndc', 'instructions', 'prescriberName',
+        'prescriberRegistrationBody', 'prescriberRegistrationNumber',
+        'prescriberTelephone', 'prescriberAddressLine1',
+        'prescriberAddressLine2', 'prescriberCity', 'prescriberState',
+        'prescriberZip'
+      ].forEach(function(id) {
+        var $el = $('#' + id);
+        if ($el.length === 0) {
+          console.warn('Prescription field element not found:', id);
+        } else {
+          setPrescriptionField(id, '-');
+        }
+      });
+      return;
+    }
+
+    console.log('Setting prescription fields');
+    // Basic prescription and medication info
+    setPrescriptionField('rxId', prescription.rxId);
+    setPrescriptionField('createdDate', prescription.createdDate);
+    setPrescriptionField('cancelledAt', prescription.cancelledAt);
+    setPrescriptionField('schedule', prescription.schedule);
+    setPrescriptionField('daysSupply', prescription.daysSupply);
+    setPrescriptionField('numberOfFills', prescription.numberOfFills);
+    setPrescriptionField('quantityPerFill', prescription.quantityPerFill);
+    setPrescriptionField('dispenseAsWrittenCode', prescription.dispenseAsWrittenCode);
+    setPrescriptionField('initialFillDate', prescription.initialFillDate);
+    setPrescriptionField('initialFillQuantity', prescription.initialFillQuantity);
+    setPrescriptionField('initialFillDaysSupply', prescription.initialFillDaysSupply);
+    setPrescriptionField('lastFillDate', prescription.lastFillDate);
+    setPrescriptionField('expiryDate', prescription.expiryDate);
+    setPrescriptionField('FH_PatientID', prescription.FH_PatientID);
+    setPrescriptionField('FW_PatientID', prescription.FW_PatientID);
+
+    setPrescriptionField('medicationName', prescription.medicationName);
+    setPrescriptionField('medicationBrandName', prescription.medicationBrandName);
+    setPrescriptionField('medicationStrength', prescription.medicationStrength);
+    setPrescriptionField('medicationForm', prescription.medicationForm);
+    setPrescriptionField('ndc', prescription.ndc);
+    setPrescriptionField('instructions', prescription.instructions);
+
+    // Prescriber details
+    setPrescriptionField('prescriberName', prescription.prescriberName);
+    setPrescriptionField('prescriberRegistrationBody', prescription.prescriberRegistrationBody);
+    setPrescriptionField('prescriberRegistrationNumber', prescription.prescriberRegistrationNumber);
+    setPrescriptionField('prescriberTelephone', prescription.prescriberTelephone);
+
+    setPrescriptionField('prescriberAddressLine1', prescription.prescriberAddressLine1);
+    setPrescriptionField('prescriberAddressLine2', prescription.prescriberAddressLine2);
+    setPrescriptionField('prescriberCity', prescription.prescriberCity);
+    setPrescriptionField('prescriberState', prescription.prescriberState);
+    setPrescriptionField('prescriberZip', prescription.prescriberZip);
+  };
   
   // Helper function to populate encounter filter dropdown from medications
   function populateEncounterFilter(medications) {
@@ -1687,6 +2284,158 @@
     }
   }
 
+  // Helper function to format medication details in a readable way
+  // Make it globally accessible for use in HTML
+  window.formatMedicationDetails = function formatMedicationDetails(med) {
+    if (!med) return '<p>No medication data available</p>';
+    
+    var html = '<div style="display: grid; grid-template-columns: 180px 1fr; gap: 8px 12px; font-size: 0.9em;">';
+    
+    // Helper to format a field
+    function addField(label, value, isMultiline) {
+      if (value === null || value === undefined || value === '') {
+        value = '<span style="color: #999; font-style: italic;">-</span>';
+      }
+      var valueStyle = isMultiline ? 'grid-column: 2; white-space: pre-wrap; word-break: break-word;' : 'grid-column: 2;';
+      html += '<div style="font-weight: 600; color: #495057;">' + label + ':</div>';
+      html += '<div style="' + valueStyle + ' color: #212529;">' + value + '</div>';
+    }
+    
+    // Basic Information
+    html += '<div style="grid-column: 1 / -1; font-weight: 700; color: #007bff; margin-top: 8px; margin-bottom: 4px; padding-bottom: 4px; border-bottom: 1px solid #dee2e6;">Basic Information</div>';
+    addField('Resource ID', med.id);
+    addField('Resource Type', med.resourceType);
+    addField('Status', med.status);
+    if (med.intent) addField('Intent', med.intent);
+    if (med.priority) addField('Priority', med.priority);
+    if (med.authoredOn) addField('Authored On', new Date(med.authoredOn).toLocaleString());
+    if (med.validityPeriod) {
+      if (med.validityPeriod.start) addField('Valid From', new Date(med.validityPeriod.start).toLocaleString());
+      if (med.validityPeriod.end) addField('Valid Until', new Date(med.validityPeriod.end).toLocaleString());
+    }
+    
+    // Medication Information
+    html += '<div style="grid-column: 1 / -1; font-weight: 700; color: #007bff; margin-top: 12px; margin-bottom: 4px; padding-bottom: 4px; border-bottom: 1px solid #dee2e6;">Medication Information</div>';
+    if (med.medicationCodeableConcept) {
+      if (med.medicationCodeableConcept.text) addField('Medication Name', med.medicationCodeableConcept.text);
+      if (med.medicationCodeableConcept.coding && med.medicationCodeableConcept.coding.length > 0) {
+        var codings = med.medicationCodeableConcept.coding.map(function(c) {
+          return (c.display || c.code) + (c.system ? ' (' + c.system + ')' : '');
+        }).join('<br>');
+        addField('Coding', codings, true);
+      }
+    }
+    if (med.medicationReference) {
+      addField('Medication Reference', med.medicationReference.reference || med.medicationReference.display);
+    }
+    
+    // Dosage Instructions
+    if (med.dosageInstruction && med.dosageInstruction.length > 0) {
+      html += '<div style="grid-column: 1 / -1; font-weight: 700; color: #007bff; margin-top: 12px; margin-bottom: 4px; padding-bottom: 4px; border-bottom: 1px solid #dee2e6;">Dosage Instructions</div>';
+      med.dosageInstruction.forEach(function(dosage, idx) {
+        if (idx > 0) html += '<div style="grid-column: 1 / -1; margin-top: 8px; padding-top: 8px; border-top: 1px dashed #dee2e6;"></div>';
+        if (dosage.text) addField('Instructions', dosage.text, true);
+        if (dosage.route && dosage.route.coding && dosage.route.coding[0]) {
+          addField('Route', (dosage.route.coding[0].display || dosage.route.coding[0].code) + (dosage.route.coding[0].system ? ' (' + dosage.route.coding[0].system + ')' : ''));
+        }
+        if (dosage.doseAndRate && dosage.doseAndRate[0]) {
+          var dose = dosage.doseAndRate[0];
+          if (dose.doseQuantity) {
+            addField('Dose', (dose.doseQuantity.value || '') + ' ' + (dose.doseQuantity.unit || ''));
+          }
+          if (dose.rateQuantity) {
+            addField('Rate', (dose.rateQuantity.value || '') + ' ' + (dose.rateQuantity.unit || ''));
+          }
+        }
+        if (dosage.timing) {
+          if (dosage.timing.repeat) {
+            var timing = '';
+            if (dosage.timing.repeat.frequency) timing += dosage.timing.repeat.frequency + 'x';
+            if (dosage.timing.repeat.period) timing += ' every ' + dosage.timing.repeat.period + ' ' + (dosage.timing.repeat.periodUnit || '');
+            if (timing) addField('Frequency', timing);
+          }
+          if (dosage.timing.code && dosage.timing.code.text) {
+            addField('Schedule', dosage.timing.code.text);
+          }
+        }
+      });
+    }
+    
+    // Dispense Request
+    if (med.dispenseRequest) {
+      html += '<div style="grid-column: 1 / -1; font-weight: 700; color: #007bff; margin-top: 12px; margin-bottom: 4px; padding-bottom: 4px; border-bottom: 1px solid #dee2e6;">Dispense Information</div>';
+      if (med.dispenseRequest.quantity) {
+        addField('Quantity', (med.dispenseRequest.quantity.value || '') + ' ' + (med.dispenseRequest.quantity.unit || ''));
+      }
+      if (med.dispenseRequest.expectedSupplyDuration) {
+        addField('Days Supply', (med.dispenseRequest.expectedSupplyDuration.value || '') + ' ' + (med.dispenseRequest.expectedSupplyDuration.unit || 'days'));
+      }
+      if (med.dispenseRequest.numberOfRepeatsAllowed !== undefined) {
+        addField('Number of Refills', med.dispenseRequest.numberOfRepeatsAllowed);
+      }
+      if (med.dispenseRequest.validityPeriod) {
+        if (med.dispenseRequest.validityPeriod.start) addField('Valid From', new Date(med.dispenseRequest.validityPeriod.start).toLocaleString());
+        if (med.dispenseRequest.validityPeriod.end) addField('Valid Until', new Date(med.dispenseRequest.validityPeriod.end).toLocaleString());
+      }
+    }
+    
+    // Substitution
+    if (med.substitution) {
+      html += '<div style="grid-column: 1 / -1; font-weight: 700; color: #007bff; margin-top: 12px; margin-bottom: 4px; padding-bottom: 4px; border-bottom: 1px solid #dee2e6;">Substitution</div>';
+      addField('Allowed', med.substitution.allowed === false ? 'No (Dispense As Written)' : (med.substitution.allowed ? 'Yes' : 'Unknown'));
+      if (med.substitution.reason && med.substitution.reason.coding && med.substitution.reason.coding[0]) {
+        addField('Reason', med.substitution.reason.coding[0].display || med.substitution.reason.coding[0].code);
+      }
+    }
+    
+    // Encounter/Context
+    if (med.encounter || med.context) {
+      html += '<div style="grid-column: 1 / -1; font-weight: 700; color: #007bff; margin-top: 12px; margin-bottom: 4px; padding-bottom: 4px; border-bottom: 1px solid #dee2e6;">Encounter</div>';
+      if (med.encounter && med.encounter.reference) addField('Encounter Reference', med.encounter.reference);
+      if (med.context && med.context.reference) addField('Context Reference', med.context.reference);
+    }
+    
+    // Requester/Prescriber
+    if (med.requester) {
+      html += '<div style="grid-column: 1 / -1; font-weight: 700; color: #007bff; margin-top: 12px; margin-bottom: 4px; padding-bottom: 4px; border-bottom: 1px solid #dee2e6;">Prescriber</div>';
+      if (med.requester.reference) addField('Requester Reference', med.requester.reference);
+      if (med.requester.display) addField('Requester Name', med.requester.display);
+    }
+    
+    // Notes
+    if (med.note && med.note.length > 0) {
+      html += '<div style="grid-column: 1 / -1; font-weight: 700; color: #007bff; margin-top: 12px; margin-bottom: 4px; padding-bottom: 4px; border-bottom: 1px solid #dee2e6;">Notes</div>';
+      med.note.forEach(function(note, idx) {
+        if (idx > 0) html += '<div style="grid-column: 1 / -1; margin-top: 8px;"></div>';
+        if (note.text) addField('Note ' + (idx + 1), note.text, true);
+        if (note.authorString) addField('Author', note.authorString);
+        if (note.time) addField('Time', new Date(note.time).toLocaleString());
+      });
+    }
+    
+    // Identifiers
+    if (med.identifier && med.identifier.length > 0) {
+      html += '<div style="grid-column: 1 / -1; font-weight: 700; color: #007bff; margin-top: 12px; margin-bottom: 4px; padding-bottom: 4px; border-bottom: 1px solid #dee2e6;">Identifiers</div>';
+      med.identifier.forEach(function(id) {
+        var idValue = (id.value || '') + (id.system ? ' (' + id.system + ')' : '');
+        addField(id.type ? id.type.text || id.type.coding[0].display : 'Identifier', idValue);
+      });
+    }
+    
+    // Meta Information
+    if (med.meta) {
+      html += '<div style="grid-column: 1 / -1; font-weight: 700; color: #007bff; margin-top: 12px; margin-bottom: 4px; padding-bottom: 4px; border-bottom: 1px solid #dee2e6;">Meta Information</div>';
+      if (med.meta.lastUpdated) addField('Last Updated', new Date(med.meta.lastUpdated).toLocaleString());
+      if (med.meta.versionId) addField('Version', med.meta.versionId);
+      if (med.meta.profile && med.meta.profile.length > 0) {
+        addField('Profile', med.meta.profile.join('<br>'), true);
+      }
+    }
+    
+    html += '</div>';
+    return html;
+  };
+  
   // Make displayMedications globally accessible
   window.displayMedications = function(medications, filterEncounterId) {
     console.log('displayMedications called with', medications.length, 'items');
@@ -1825,9 +2574,27 @@
                          '<i class="fas fa-check"></i> Fulfill</button>';
         }
         
-        html += '<li style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">' +
-                '<div style="flex: 1;"><strong>' + medName + '</strong><div class="item-meta">' + meta + '</div></div>' +
-                fulfillButton +
+        // Build collapsible details content (formatted, readable view)
+        var detailsHtml = formatMedicationDetails(med);
+        
+        var detailsId = 'med-details-' + med.id;
+        
+        html += '<li class="med-list-item" style="margin-bottom: 10px; border-radius: 4px; border: 1px solid #e0e0e0; padding: 8px 10px; background: #fff;">' +
+                  '<div style="display: flex; justify-content: space-between; align-items: center; cursor: pointer;" class="med-header" data-med-details-id="' + detailsId + '">' +
+                    '<div style="flex: 1;">' +
+                      '<strong>' + medName + '</strong>' +
+                      '<div class="item-meta" style="margin-top: 4px;">' + meta + '</div>' +
+                    '</div>' +
+                    '<div style="display: flex; align-items: center; gap: 8px; margin-left: 8px;">' +
+                      '<button type="button" class="med-details-toggle" data-med-details-id="' + detailsId + '" style="padding: 3px 8px; font-size: 0.8em; border-radius: 4px; border: 1px solid #ced4da; background: #f8f9fa; cursor: pointer;">' +
+                        '<span class="med-details-toggle-text">Details</span>' +
+                      '</button>' +
+                      fulfillButton +
+                    '</div>' +
+                  '</div>' +
+                  '<div id="' + detailsId + '" class="med-details" style="display: none; margin-top: 8px; padding-top: 8px; border-top: 1px dashed #e0e0e0; font-size: 0.85em; max-height: 400px; overflow: auto; background: #f8f9fa; border-radius: 4px; padding: 12px;">' +
+                    detailsHtml +
+                  '</div>' +
                 '</li>';
       });
       html += '</ul>';
@@ -1835,6 +2602,17 @@
       html = '<div class="no-data"><i class="fas fa-info-circle"></i><span>No medications available</span></div>';
     }
     $('#medications').html(html);
+    
+    // Update patient card summary for medications / supplements
+    try {
+      var medSummary = '-';
+      if (Array.isArray(medications) && medications.length > 0) {
+        medSummary = medications.length + ' medication' + (medications.length > 1 ? 's' : '');
+      }
+      $('#medications-supplements').html(medSummary);
+    } catch (e) {
+      console.warn('Unable to update medications summary on patient card:', e);
+    }
   };
   
   function displayAllergies(allergies) {
@@ -1925,6 +2703,19 @@
       html = '<div class="no-data"><i class="fas fa-info-circle"></i><span>No allergies available</span></div>';
     }
     $('#allergies').html(html);
+    
+    // Update patient card summary for allergies
+    try {
+      var allergySummary = '-';
+      if (Array.isArray(allergies) && allergies.length > 0) {
+        allergySummary = allergies.length + ' allerg' + (allergies.length > 1 ? 'ies' : 'y');
+      } else {
+        allergySummary = 'None recorded';
+      }
+      $('#patient-allergies').html(allergySummary);
+    } catch (e) {
+      console.warn('Unable to update allergies summary on patient card:', e);
+    }
   }
   
   function displayConditions(conditions) {
@@ -2034,6 +2825,19 @@
       html = '<div class="no-data"><i class="fas fa-info-circle"></i><span>No conditions available</span></div>';
     }
     $('#conditions').html(html);
+    
+    // Update patient card summary for conditions
+    try {
+      var conditionSummary = '-';
+      if (Array.isArray(conditions) && conditions.length > 0) {
+        conditionSummary = conditions.length + ' condition' + (conditions.length > 1 ? 's' : '');
+      } else {
+        conditionSummary = 'None recorded';
+      }
+      $('#patient-conditions').html(conditionSummary);
+    } catch (e) {
+      console.warn('Unable to update conditions summary on patient card:', e);
+    }
   }
   
   function displayDocuments(documents) {

@@ -45,20 +45,215 @@
           <div class="card-content">
             <div class="info-grid">
               <div class="info-item">
+                <label>EHR Patient ID</label>
+                <span id="ehr-patient-id" class="value">-</span>
+              </div>
+              <div class="info-item">
+                <label>Status</label>
+                <span id="patient-status" class="value">-</span>
+              </div>
+              <div class="info-item">
                 <label>First Name</label>
-                <span id='fname' class="value">-</span>
+                <span id="fname" class="value">-</span>
+              </div>
+              <div class="info-item">
+                <label>Middle Name</label>
+                <span id="mname" class="value">-</span>
               </div>
               <div class="info-item">
                 <label>Last Name</label>
-                <span id='lname' class="value">-</span>
+                <span id="lname" class="value">-</span>
               </div>
               <div class="info-item">
                 <label>Gender</label>
-                <span id='gender' class="value">-</span>
+                <span id="gender" class="value">-</span>
               </div>
               <div class="info-item">
                 <label>Date of Birth</label>
-                <span id='birthdate' class="value">-</span>
+                <span id="birthdate" class="value">-</span>
+              </div>
+              <div class="info-item">
+                <label>Address 1</label>
+                <span id="address1" class="value">-</span>
+              </div>
+              <div class="info-item">
+                <label>Address 2</label>
+                <span id="address2" class="value">-</span>
+              </div>
+              <div class="info-item">
+                <label>City</label>
+                <span id="city" class="value">-</span>
+              </div>
+              <div class="info-item">
+                <label>State</label>
+                <span id="state" class="value">-</span>
+              </div>
+              <div class="info-item">
+                <label>ZIP</label>
+                <span id="zip" class="value">-</span>
+              </div>
+              <div class="info-item">
+                <label>Telephone</label>
+                <span id="telephone" class="value">-</span>
+              </div>
+              <div class="info-item">
+                <label>Email</label>
+                <span id="email" class="value">-</span>
+              </div>
+              <div class="info-item">
+                <label>Allergies</label>
+                <span id="patient-allergies" class="value">-</span>
+              </div>
+              <div class="info-item">
+                <label>Conditions</label>
+                <span id="patient-conditions" class="value">-</span>
+              </div>
+              <div class="info-item">
+                <label>Medications / Supplements</label>
+                <span id="medications-supplements" class="value">-</span>
+              </div>
+              <div class="info-item">
+                <label>Prefers Child Safety Cap</label>
+                <span id="prefers-child-safety-cap" class="value">-</span>
+              </div>
+              <div class="info-item">
+                <label>SMS Opt-in</label>
+                <span id="sms-optin" class="value">-</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Prescription Card -->
+        <section class="card prescription-card">
+          <div class="card-header">
+            <i class="fas fa-file-prescription"></i>
+            <h2>Prescription Details</h2>
+          </div>
+          <div class="card-content">
+            <div class="info-grid">
+              <div class="info-item">
+                <label>Rx ID</label>
+                <span id="rxId" class="value">-</span>
+              </div>
+              <div class="info-item">
+                <label>Created Date</label>
+                <span id="createdDate" class="value">-</span>
+              </div>
+              <div class="info-item">
+                <label>Cancelled At</label>
+                <span id="cancelledAt" class="value">-</span>
+              </div>
+              <div class="info-item">
+                <label>Status / Schedule</label>
+                <span id="schedule" class="value">-</span>
+              </div>
+              <div class="info-item">
+                <label>Days Supply</label>
+                <span id="daysSupply" class="value">-</span>
+              </div>
+              <div class="info-item">
+                <label>Number of Fills</label>
+                <span id="numberOfFills" class="value">-</span>
+              </div>
+              <div class="info-item">
+                <label>Quantity Per Fill</label>
+                <span id="quantityPerFill" class="value">-</span>
+              </div>
+              <div class="info-item">
+                <label>Dispense As Written Code</label>
+                <span id="dispenseAsWrittenCode" class="value">-</span>
+              </div>
+              <div class="info-item">
+                <label>Initial Fill Date</label>
+                <span id="initialFillDate" class="value">-</span>
+              </div>
+              <div class="info-item">
+                <label>Initial Fill Quantity</label>
+                <span id="initialFillQuantity" class="value">-</span>
+              </div>
+              <div class="info-item">
+                <label>Initial Fill Days Supply</label>
+                <span id="initialFillDaysSupply" class="value">-</span>
+              </div>
+              <div class="info-item">
+                <label>Last Fill Date</label>
+                <span id="lastFillDate" class="value">-</span>
+              </div>
+              <div class="info-item">
+                <label>Expiry Date</label>
+                <span id="expiryDate" class="value">-</span>
+              </div>
+              <div class="info-item">
+                <label>FH Patient ID</label>
+                <span id="FH_PatientID" class="value">-</span>
+              </div>
+              <div class="info-item">
+                <label>FW Patient ID</label>
+                <span id="FW_PatientID" class="value">-</span>
+              </div>
+              <div class="info-item">
+                <label>Medication Name</label>
+                <span id="medicationName" class="value">-</span>
+              </div>
+              <div class="info-item">
+                <label>Medication Brand Name</label>
+                <span id="medicationBrandName" class="value">-</span>
+              </div>
+              <div class="info-item">
+                <label>Medication Strength</label>
+                <span id="medicationStrength" class="value">-</span>
+              </div>
+              <div class="info-item">
+                <label>Medication Form</label>
+                <span id="medicationForm" class="value">-</span>
+              </div>
+              <div class="info-item">
+                <label>NDC</label>
+                <span id="ndc" class="value">-</span>
+              </div>
+              <div class="info-item" style="grid-column: 1 / -1;">
+                <label>Instructions</label>
+                <span id="instructions" class="value">-</span>
+              </div>
+            </div>
+
+            <div class="info-grid" style="margin-top: 16px;">
+              <div class="info-item">
+                <label>Prescriber Name</label>
+                <span id="prescriberName" class="value">-</span>
+              </div>
+              <div class="info-item">
+                <label>Prescriber Registration Body</label>
+                <span id="prescriberRegistrationBody" class="value">-</span>
+              </div>
+              <div class="info-item">
+                <label>Prescriber Registration #</label>
+                <span id="prescriberRegistrationNumber" class="value">-</span>
+              </div>
+              <div class="info-item">
+                <label>Prescriber Telephone</label>
+                <span id="prescriberTelephone" class="value">-</span>
+              </div>
+              <div class="info-item">
+                <label>Prescriber Address 1</label>
+                <span id="prescriberAddressLine1" class="value">-</span>
+              </div>
+              <div class="info-item">
+                <label>Prescriber Address 2</label>
+                <span id="prescriberAddressLine2" class="value">-</span>
+              </div>
+              <div class="info-item">
+                <label>Prescriber City</label>
+                <span id="prescriberCity" class="value">-</span>
+              </div>
+              <div class="info-item">
+                <label>Prescriber State</label>
+                <span id="prescriberState" class="value">-</span>
+              </div>
+              <div class="info-item">
+                <label>Prescriber ZIP</label>
+                <span id="prescriberZip" class="value">-</span>
               </div>
             </div>
           </div>
@@ -82,7 +277,7 @@
         <section class="card medications-card">
           <div class="card-header" style="display: flex; align-items: center; justify-content: space-between;">
             <div style="display: flex; align-items: center;">
-              <i class="fas fa-pills"></i>
+            <i class="fas fa-pills"></i>
               <h2 style="margin: 0 0 0 10px;">Medications</h2>
             </div>
             <select id="medication-filter-encounter" style="padding: 4px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9em;">
@@ -749,7 +944,7 @@
             }
             
             if (medications.length > 0) {
-              var html = '<ul style="margin: 0; padding-left: 20px;">';
+              var html = '<ul style="margin: 0; padding-left: 0; list-style: none;">';
               medications.forEach(function(med) {
                 var medName = 'Unknown';
                 if (med.medicationCodeableConcept && med.medicationCodeableConcept.text) {
@@ -784,9 +979,38 @@
                                  '<i class="fas fa-check"></i> Fulfill</button>';
                 }
                 
-                html += '<li style="display: flex; justify-content: space-between; align-items: center; margin: 8px 0; padding: 8px; background: #f8f9fa; border-radius: 4px;">';
-                html += '<div style="flex: 1;"><strong>' + medName + '</strong><div style="font-size: 0.9em; color: #666; margin-top: 4px;">' + meta + '</div></div>';
-                html += fulfillButton;
+                // Build collapsible details content (formatted, readable view)
+                var detailsHtml = '';
+                if (typeof window.formatMedicationDetails === 'function') {
+                  detailsHtml = window.formatMedicationDetails(med);
+                } else {
+                  // Fallback to JSON if function not available
+                  try {
+                    var medJson = JSON.stringify(med, null, 2).replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                    detailsHtml = '<pre style="margin: 0; white-space: pre; word-wrap: normal; font-family: Menlo, Monaco, Consolas, \'Courier New\', monospace; font-size: 0.8em;">' + medJson + '</pre>';
+                  } catch (e) {
+                    detailsHtml = '<p>Unable to display details</p>';
+                  }
+                }
+                
+                var detailsId = 'enc-med-details-' + med.id;
+                
+                html += '<li class="med-list-item" style="margin: 8px 0; padding: 8px; background: #f8f9fa; border-radius: 4px; border: 1px solid #e0e0e0;">';
+                html += '  <div style="display: flex; justify-content: space-between; align-items: center;">';
+                html += '    <div style="flex: 1; cursor: pointer;" class="med-header" data-med-details-id="' + detailsId + '">';
+                html += '      <strong>' + medName + '</strong>';
+                html += '      <div style="font-size: 0.9em; color: #666; margin-top: 4px;">' + meta + '</div>';
+                html += '    </div>';
+                html += '    <div style="display: flex; align-items: center; gap: 8px; margin-left: 8px;">';
+                html += '      <button type="button" class="med-details-toggle" data-med-details-id="' + detailsId + '" style="padding: 3px 8px; font-size: 0.8em; border-radius: 4px; border: 1px solid #ced4da; background: #fff; cursor: pointer;">';
+                html += '        <span class="med-details-toggle-text">Details</span>';
+                html += '      </button>';
+                html +=        fulfillButton;
+                html += '    </div>';
+                html += '  </div>';
+                html += '  <div id="' + detailsId + '" class="med-details" style="display: none; margin-top: 8px; padding-top: 8px; border-top: 1px dashed #e0e0e0; font-size: 0.85em; max-height: 400px; overflow: auto; background: #ffffff; border-radius: 4px; padding: 12px;">';
+                html +=      detailsHtml;
+                html += '  </div>';
                 html += '</li>';
               });
               html += '</ul>';
@@ -1081,6 +1305,53 @@
         } else {
           alert('fulfillMedication function not available. Please ensure the app is launched from an EHR.');
           $btn.prop('disabled', false).html(originalText);
+        }
+      });
+
+      // Toggle medication details (both main list and encounter list)
+      $(document).on('click', '.med-details-toggle', function(e) {
+        e.stopPropagation(); // Prevent event bubbling
+        
+        var detailsId = $(this).data('med-details-id');
+        if (!detailsId) {
+          return;
+        }
+
+        var $details = $('#' + detailsId);
+        var $toggleButtons = $('.med-details-toggle[data-med-details-id="' + detailsId + '"]');
+        var isVisible = $details.is(':visible');
+
+        if (isVisible) {
+          $details.slideUp(150);
+          $toggleButtons.find('.med-details-toggle-text').text('Details');
+        } else {
+          $details.slideDown(150);
+          $toggleButtons.find('.med-details-toggle-text').text('Hide');
+        }
+      });
+      
+      // Also allow clicking the header to toggle (but not if clicking buttons)
+      $(document).on('click', '.med-header', function(e) {
+        // Don't trigger if clicking buttons or links
+        if ($(e.target).closest('button, a, .fulfill-med-btn').length > 0) {
+          return;
+        }
+        
+        var detailsId = $(this).data('med-details-id');
+        if (!detailsId) {
+          return;
+        }
+
+        var $details = $('#' + detailsId);
+        var $toggleButtons = $('.med-details-toggle[data-med-details-id="' + detailsId + '"]');
+        var isVisible = $details.is(':visible');
+
+        if (isVisible) {
+          $details.slideUp(150);
+          $toggleButtons.find('.med-details-toggle-text').text('Details');
+        } else {
+          $details.slideDown(150);
+          $toggleButtons.find('.med-details-toggle-text').text('Hide');
         }
       });
     </script>
