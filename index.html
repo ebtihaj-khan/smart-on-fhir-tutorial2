@@ -73,6 +73,10 @@
                 <span id="birthdate" class="value">-</span>
               </div>
               <div class="info-item">
+                <label>SSN</label>
+                <span id="ssn" class="value">-</span>
+              </div>
+              <div class="info-item">
                 <label>Address 1</label>
                 <span id="address1" class="value">-</span>
               </div>
@@ -288,6 +292,46 @@
             <div id='medications' class="loading-state">
               <i class="fas fa-spinner fa-spin"></i>
               <span>Loading medications...</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- Medication Dispense Report Card -->
+        <section class="card medication-dispense-card">
+          <div class="card-header" style="display: flex; align-items: center; justify-content: space-between;">
+            <div style="display: flex; align-items: center;">
+              <i class="fas fa-clipboard-list"></i>
+              <h2 style="margin: 0 0 0 10px;">Medication Dispense Report</h2>
+            </div>
+            <button id="refresh-dispense-report-btn" style="padding: 6px 12px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9em;">
+              <i class="fas fa-sync-alt"></i> Refresh
+            </button>
+          </div>
+          <div class="card-content">
+            <div id='medication-dispense-report' class="loading-state">
+              <i class="fas fa-spinner fa-spin"></i>
+              <span>Loading medication dispense report...</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- Patients with Medication Dispenses Card -->
+        <section class="card patients-with-dispenses-card">
+          <div class="card-header" style="display: flex; align-items: center; justify-content: space-between;">
+            <div style="display: flex; align-items: center;">
+              <i class="fas fa-users"></i>
+              <h2 style="margin: 0 0 0 10px;">Patients with Medication Dispenses</h2>
+            </div>
+            <button id="search-all-dispenses-btn" style="padding: 6px 12px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9em;">
+              <i class="fas fa-search"></i> Search All
+            </button>
+          </div>
+          <div class="card-content">
+            <div id='patients-with-dispenses' style="min-height: 100px;">
+              <div style="text-align: center; padding: 20px; color: #666;">
+                <i class="fas fa-info-circle"></i>
+                <p style="margin: 10px 0 0 0;">Click "Search All" to find all patients with medication dispenses in the sandbox</p>
+              </div>
             </div>
           </div>
         </section>
@@ -1352,6 +1396,263 @@
         } else {
           $details.slideDown(150);
           $toggleButtons.find('.med-details-toggle-text').text('Hide');
+        }
+      });
+
+      // Toggle medication dispense details
+      $(document).on('click', '.dispense-details-toggle', function(e) {
+        e.stopPropagation(); // Prevent event bubbling
+        
+        var detailsId = $(this).data('dispense-details-id');
+        if (!detailsId) {
+          return;
+        }
+
+        var $details = $('#' + detailsId);
+        var $toggleButtons = $('.dispense-details-toggle[data-dispense-details-id="' + detailsId + '"]');
+        var isVisible = $details.is(':visible');
+
+        if (isVisible) {
+          $details.slideUp(150);
+          $toggleButtons.find('.dispense-details-toggle-text').text('Details');
+        } else {
+          $details.slideDown(150);
+          $toggleButtons.find('.dispense-details-toggle-text').text('Hide');
+        }
+      });
+      
+      // Also allow clicking the dispense header to toggle (but not if clicking buttons)
+      $(document).on('click', '.dispense-header', function(e) {
+        // Don't trigger if clicking buttons or links
+        if ($(e.target).closest('button, a').length > 0) {
+          return;
+        }
+        
+        var detailsId = $(this).data('dispense-details-id');
+        if (!detailsId) {
+          return;
+        }
+
+        var $details = $('#' + detailsId);
+        var $toggleButtons = $('.dispense-details-toggle[data-dispense-details-id="' + detailsId + '"]');
+        var isVisible = $details.is(':visible');
+
+        if (isVisible) {
+          $details.slideUp(150);
+          $toggleButtons.find('.dispense-details-toggle-text').text('Details');
+        } else {
+          $details.slideDown(150);
+          $toggleButtons.find('.dispense-details-toggle-text').text('Hide');
+        }
+      });
+
+      // Handle "Refresh Medication Dispense Report" button
+      $('#refresh-dispense-report-btn').on('click', function() {
+        var $btn = $(this);
+        var originalText = $btn.html();
+        
+        if (!window.smartClient || !window.smartClient.patient) {
+          alert('SMART client not initialized. Please launch the app from an EHR.');
+          return;
+        }
+        
+        $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Refreshing...');
+        $('#medication-dispense-report').html('<div class="loading-state"><i class="fas fa-spinner fa-spin"></i> Loading medication dispense report...</div>');
+        
+        var patientId = window.smartClient.patient.id;
+        
+        if (typeof window.getAllMedicationDispenses === 'function') {
+          window.getAllMedicationDispenses(patientId, 100)
+            .then(function(dispenses) {
+              if (typeof window.displayMedicationDispenses === 'function') {
+                window.displayMedicationDispenses(dispenses);
+              } else {
+                $('#medication-dispense-report').html('<p class="no-data">Display function not available</p>');
+              }
+              $btn.prop('disabled', false).html(originalText);
+            })
+            .catch(function(error) {
+              console.error('Error loading medication dispense report:', error);
+              $('#medication-dispense-report').html('<p class="no-data" style="color: #721c24;">Error loading medication dispense report: ' + (error.message || 'Unknown error') + '</p>');
+              $btn.prop('disabled', false).html(originalText);
+            });
+        } else {
+          $('#medication-dispense-report').html('<p class="no-data" style="color: #721c24;">Function not available. Please ensure the app is launched from an EHR.</p>');
+          $btn.prop('disabled', false).html(originalText);
+        }
+      });
+
+      // Handle "Search All" button for patients with medication dispenses
+      $('#search-all-dispenses-btn').on('click', function() {
+        var $btn = $(this);
+        var originalText = $btn.html();
+        
+        if (!window.smartClient) {
+          alert('SMART client not initialized. Please launch the app from an EHR.');
+          return;
+        }
+        
+        $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Searching...');
+        $('#patients-with-dispenses').html('<div class="loading-state" style="text-align: center; padding: 40px;"><i class="fas fa-spinner fa-spin"></i><p style="margin-top: 10px;">Searching all medication dispenses in sandbox...</p></div>');
+        
+        // Step 1: Try searching all MedicationDispense resources first
+        if (typeof window.searchAllMedicationDispenses === 'function') {
+          window.searchAllMedicationDispenses(200) // Search up to 200 dispenses
+            .then(function(dispenses) {
+              if (!dispenses || dispenses.length === 0) {
+                // Fallback: Try bulk patient search approach
+                console.log('No dispenses found via direct search, trying bulk patient search...');
+                $('#patients-with-dispenses').html('<div class="loading-state" style="text-align: center; padding: 40px;"><i class="fas fa-spinner fa-spin"></i><p style="margin-top: 10px;">No dispenses found via direct search. Trying bulk patient search approach...</p></div>');
+                
+                if (typeof window.findPatientsWithDispensesBulk === 'function') {
+                  return window.findPatientsWithDispensesBulk(50) // Check up to 50 patients
+                    .then(function(result) {
+                      if (!result.patients || result.patients.length === 0) {
+                        var message = 'No patients with medication dispenses found in the sandbox.';
+                        if (result && result.error) {
+                          message += ' ' + result.error;
+                        } else {
+                          message += ' This may mean there are no MedicationDispense resources in the sandbox, or authorization scopes may be limiting access.';
+                        }
+                        $('#patients-with-dispenses').html('<div class="no-data"><i class="fas fa-info-circle"></i><span>' + message + '</span></div>');
+                        $btn.prop('disabled', false).html(originalText);
+                        return;
+                      }
+                      
+                      // Display patients found via bulk search
+                      if (typeof window.displayPatientsWithDispenses === 'function') {
+                        window.displayPatientsWithDispenses(result.patients, result.dispenseCounts);
+                      } else {
+                        $('#patients-with-dispenses').html('<p class="no-data">Display function not available</p>');
+                      }
+                      $btn.prop('disabled', false).html(originalText);
+                    })
+                    .catch(function(bulkError) {
+                      console.error('Bulk patient search also failed:', bulkError);
+                      $('#patients-with-dispenses').html('<div class="no-data" style="color: #721c24;"><i class="fas fa-exclamation-triangle"></i><span>Unable to search all patients. This may require system-level authorization scopes. Error: ' + (bulkError.message || 'Unknown error') + '</span></div>');
+                      $btn.prop('disabled', false).html(originalText);
+                    });
+                } else {
+                  $('#patients-with-dispenses').html('<div class="no-data"><i class="fas fa-info-circle"></i><span>No medication dispenses found in the sandbox. Bulk search function not available.</span></div>');
+                  $btn.prop('disabled', false).html(originalText);
+                  return;
+                }
+              }
+              
+              console.log('Found ' + dispenses.length + ' medication dispenses');
+              
+              // Step 2: Extract unique patient IDs
+              var patientIds = [];
+              if (typeof window.extractPatientIdsFromDispenses === 'function') {
+                // We need to make this function accessible
+                var patientIdSet = new Set();
+                dispenses.forEach(function(dispense) {
+                  if (dispense.subject && dispense.subject.reference) {
+                    var match = dispense.subject.reference.match(/^Patient\/(.+)$/);
+                    if (match && match[1]) {
+                      patientIdSet.add(match[1]);
+                    }
+                  }
+                });
+                patientIds = Array.from(patientIdSet);
+              } else {
+                // Fallback: extract manually
+                var patientIdSet = new Set();
+                dispenses.forEach(function(dispense) {
+                  if (dispense.subject && dispense.subject.reference) {
+                    var match = dispense.subject.reference.match(/^Patient\/(.+)$/);
+                    if (match && match[1]) {
+                      patientIdSet.add(match[1]);
+                    }
+                  }
+                });
+                patientIds = Array.from(patientIdSet);
+              }
+              
+              console.log('Found ' + patientIds.length + ' unique patients');
+              
+              if (patientIds.length === 0) {
+                $('#patients-with-dispenses').html('<div class="no-data"><i class="fas fa-info-circle"></i><span>No patients found in medication dispenses</span></div>');
+                $btn.prop('disabled', false).html(originalText);
+                return;
+              }
+              
+              // Count dispenses per patient
+              var dispenseCounts = {};
+              dispenses.forEach(function(dispense) {
+                if (dispense.subject && dispense.subject.reference) {
+                  var match = dispense.subject.reference.match(/^Patient\/(.+)$/);
+                  if (match && match[1]) {
+                    var pid = match[1];
+                    dispenseCounts[pid] = (dispenseCounts[pid] || 0) + 1;
+                  }
+                }
+              });
+              
+              // Step 3: Update loading message
+              $('#patients-with-dispenses').html('<div class="loading-state" style="text-align: center; padding: 40px;"><i class="fas fa-spinner fa-spin"></i><p style="margin-top: 10px;">Fetching demographics for ' + patientIds.length + ' patient' + (patientIds.length !== 1 ? 's' : '') + '...</p></div>');
+              
+              // Step 4: Fetch patient demographics
+              if (typeof window.fetchPatientsDemographics === 'function') {
+                window.fetchPatientsDemographics(patientIds)
+                  .then(function(patients) {
+                    console.log('Fetched ' + patients.length + ' patient demographics');
+                    
+                    // Step 5: Display patients
+                    if (typeof window.displayPatientsWithDispenses === 'function') {
+                      window.displayPatientsWithDispenses(patients, dispenseCounts);
+                    } else {
+                      $('#patients-with-dispenses').html('<p class="no-data">Display function not available</p>');
+                    }
+                    $btn.prop('disabled', false).html(originalText);
+                  })
+                  .catch(function(error) {
+                    console.error('Error fetching patient demographics:', error);
+                    $('#patients-with-dispenses').html('<p class="no-data" style="color: #721c24;">Error fetching patient demographics: ' + (error.message || 'Unknown error') + '</p>');
+                    $btn.prop('disabled', false).html(originalText);
+                  });
+              } else {
+                $('#patients-with-dispenses').html('<p class="no-data" style="color: #721c24;">Function not available. Please ensure the app is launched from an EHR.</p>');
+                $btn.prop('disabled', false).html(originalText);
+              }
+            })
+            .catch(function(error) {
+              console.error('Error searching medication dispenses:', error);
+              console.log('Trying fallback bulk patient search approach...');
+              
+              // Fallback: Try bulk patient search
+              $('#patients-with-dispenses').html('<div class="loading-state" style="text-align: center; padding: 40px;"><i class="fas fa-spinner fa-spin"></i><p style="margin-top: 10px;">Direct search failed. Trying bulk patient search approach...</p></div>');
+              
+              if (typeof window.findPatientsWithDispensesBulk === 'function') {
+                window.findPatientsWithDispensesBulk(50) // Check up to 50 patients
+                  .then(function(result) {
+                    if (!result.patients || result.patients.length === 0) {
+                      $('#patients-with-dispenses').html('<div class="no-data"><i class="fas fa-info-circle"></i><span>No patients with medication dispenses found. This may be due to authorization scopes (patient-scoped access may limit results).</span></div>');
+                      $btn.prop('disabled', false).html(originalText);
+                      return;
+                    }
+                    
+                    // Display patients found via bulk search
+                    if (typeof window.displayPatientsWithDispenses === 'function') {
+                      window.displayPatientsWithDispenses(result.patients, result.dispenseCounts);
+                    } else {
+                      $('#patients-with-dispenses').html('<p class="no-data">Display function not available</p>');
+                    }
+                    $btn.prop('disabled', false).html(originalText);
+                  })
+                  .catch(function(bulkError) {
+                    console.error('Bulk patient search also failed:', bulkError);
+                    $('#patients-with-dispenses').html('<div class="no-data" style="color: #721c24;"><i class="fas fa-exclamation-triangle"></i><span>Unable to search patients. This may require system-level authorization scopes. Error: ' + (bulkError.message || 'Unknown error') + '</span></div>');
+                    $btn.prop('disabled', false).html(originalText);
+                  });
+              } else {
+                $('#patients-with-dispenses').html('<p class="no-data" style="color: #721c24;">Error searching medication dispenses: ' + (error.message || 'Unknown error') + '</p>');
+                $btn.prop('disabled', false).html(originalText);
+              }
+            });
+        } else {
+          $('#patients-with-dispenses').html('<p class="no-data" style="color: #721c24;">Function not available. Please ensure the app is launched from an EHR.</p>');
+          $btn.prop('disabled', false).html(originalText);
         }
       });
     </script>

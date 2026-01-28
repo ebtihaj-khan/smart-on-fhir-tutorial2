@@ -809,6 +809,885 @@
   };
 
   /**
+   * Get all MedicationDispense resources for the current patient
+   * @param {string} patientId - The ID of the patient (optional, uses current patient if not provided)
+   * @param {number} count - Maximum number of results to return (default: 100)
+   * @returns {Promise} Promise that resolves with MedicationDispense resources
+   */
+  window.getAllMedicationDispenses = function(patientId, count) {
+    if (!window.smartClient) {
+      return Promise.reject(new Error('SMART client not initialized. Please launch the app from an EHR.'));
+    }
+
+    var smart = window.smartClient;
+    
+    // Use provided patientId or get from SMART client
+    if (!patientId && smart.patient && smart.patient.id) {
+      patientId = smart.patient.id;
+    }
+    
+    if (!patientId) {
+      return Promise.reject(new Error('Patient ID is required'));
+    }
+
+    var maxCount = count || 100;
+    var url = smart.state.serverUrl + '/MedicationDispense?patient=' + patientId + '&_count=' + maxCount;
+    var wrappedUrl = wrapWithProxy(url);
+
+    console.log('Fetching all MedicationDispense resources for patient:', patientId);
+
+    // Get access token
+    var accessToken = null;
+    if (smart.state && smart.state.tokenResponse) {
+      if (smart.state.tokenResponse.access_token) {
+        accessToken = smart.state.tokenResponse.access_token;
+      } else if (smart.state.tokenResponse.tokenResponse && smart.state.tokenResponse.tokenResponse.access_token) {
+        accessToken = smart.state.tokenResponse.tokenResponse.access_token;
+      }
+    }
+
+    return fetch(wrappedUrl, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/fhir+json',
+        'Authorization': accessToken ? 'Bearer ' + accessToken : ''
+      }
+    })
+    .then(function(response) {
+      if (!response.ok) {
+        throw new Error('Failed to fetch MedicationDispense: ' + response.status + ' ' + response.statusText);
+      }
+      return response.json();
+    })
+    .then(function(data) {
+      var dispenses = [];
+      if (data.entry && data.entry.length > 0) {
+        dispenses = data.entry.map(function(entry) {
+          return entry.resource;
+        });
+      }
+      console.log('Found ' + dispenses.length + ' MedicationDispense resources for patient ' + patientId);
+      return dispenses;
+    })
+    .catch(function(error) {
+      console.error('Error fetching MedicationDispense:', error);
+      throw error;
+    });
+  };
+
+  /**
+   * Display MedicationDispense resources in a formatted, readable view
+   * @param {Array} dispenses - Array of MedicationDispense resources
+   */
+  window.displayMedicationDispenses = function(dispenses) {
+    var html = '';
+    
+    if (!dispenses || dispenses.length === 0) {
+      html = '<div class="no-data"><i class="fas fa-info-circle"></i><span>No medication dispenses found</span></div>';
+      $('#medication-dispense-report').html(html);
+      return;
+    }
+
+    // Sort by whenPrepared date (most recent first)
+    var sortedDispenses = dispenses.slice().sort(function(a, b) {
+      var dateA = a.whenPrepared ? new Date(a.whenPrepared) : new Date(0);
+      var dateB = b.whenPrepared ? new Date(b.whenPrepared) : new Date(0);
+      return dateB - dateA;
+    });
+
+    html = '<ul style="list-style: none; padding: 0; margin: 0;">';
+    
+    sortedDispenses.forEach(function(dispense) {
+      var dispenseId = dispense.id || 'Unknown';
+      
+      // Extract medication name
+      var medicationName = 'Unknown Medication';
+      if (dispense.medicationCodeableConcept && dispense.medicationCodeableConcept.text) {
+        medicationName = dispense.medicationCodeableConcept.text;
+      } else if (dispense.medicationCodeableConcept && dispense.medicationCodeableConcept.coding && dispense.medicationCodeableConcept.coding[0]) {
+        medicationName = dispense.medicationCodeableConcept.coding[0].display || dispense.medicationCodeableConcept.coding[0].code;
+      } else if (dispense.medicationReference) {
+        medicationName = dispense.medicationReference.display || dispense.medicationReference.reference;
+      }
+      
+      // Extract status
+      var status = dispense.status || 'Unknown';
+      var statusClass = status === 'completed' ? 'success' : (status === 'preparation' ? 'warning' : 'info');
+      
+      // Extract category
+      var category = '-';
+      if (dispense.category && dispense.category.coding && dispense.category.coding[0]) {
+        category = dispense.category.coding[0].display || dispense.category.coding[0].code;
+      } else if (dispense.category && dispense.category.text) {
+        category = dispense.category.text;
+      }
+      
+      // Extract quantity
+      var quantity = '-';
+      if (dispense.quantity) {
+        quantity = (dispense.quantity.value || '') + ' ' + (dispense.quantity.unit || '');
+      }
+      
+      // Extract dates
+      var whenPrepared = '-';
+      if (dispense.whenPrepared) {
+        whenPrepared = new Date(dispense.whenPrepared).toLocaleString();
+      }
+      
+      var whenHandedOver = '-';
+      if (dispense.whenHandedOver) {
+        whenHandedOver = new Date(dispense.whenHandedOver).toLocaleString();
+      } else if (dispense._whenHandedOver && dispense._whenHandedOver.extension) {
+        var dataAbsentReason = dispense._whenHandedOver.extension.find(function(ext) {
+          return ext.url === 'http://hl7.org/fhir/StructureDefinition/data-absent-reason';
+        });
+        if (dataAbsentReason && dataAbsentReason.valueCode) {
+          whenHandedOver = dataAbsentReason.valueCode;
+        }
+      }
+      
+      // Extract performer
+      var performer = '-';
+      if (dispense.performer && dispense.performer.length > 0) {
+        var performers = dispense.performer.map(function(p) {
+          if (p.actor && p.actor.display) {
+            return p.actor.display;
+          } else if (p.actor && p.actor.reference) {
+            return p.actor.reference;
+          }
+          return null;
+        }).filter(function(p) { return p !== null; });
+        if (performers.length > 0) {
+          performer = performers.join(', ');
+        }
+      }
+      
+      // Extract location
+      var location = '-';
+      if (dispense.location && dispense.location.display) {
+        location = dispense.location.display;
+      } else if (dispense.location && dispense.location.reference) {
+        location = dispense.location.reference;
+      }
+      
+      // Extract authorizing prescription
+      var authorizingPrescription = '-';
+      if (dispense.authorizingPrescription && dispense.authorizingPrescription.length > 0) {
+        var prescriptions = dispense.authorizingPrescription.map(function(p) {
+          return p.reference || '-';
+        });
+        authorizingPrescription = prescriptions.join(', ');
+      }
+      
+      // Extract type
+      var type = '-';
+      if (dispense.type && dispense.type.coding && dispense.type.coding[0]) {
+        type = dispense.type.coding[0].display || dispense.type.coding[0].code;
+      } else if (dispense.type && dispense.type.text) {
+        type = dispense.type.text;
+      }
+      
+      // Build meta information
+      var meta = 'Status: ' + status;
+      if (category !== '-') meta += ' • Category: ' + category;
+      if (type !== '-') meta += ' • Type: ' + type;
+      if (whenPrepared !== '-') meta += ' • Prepared: ' + whenPrepared;
+      
+      // Build collapsible details content (formatted, readable view)
+      var detailsHtml = formatMedicationDispenseDetails(dispense);
+      
+      var detailsId = 'dispense-details-' + dispenseId;
+      
+      html += '<li class="dispense-list-item" style="margin-bottom: 10px; border-radius: 4px; border: 1px solid #e0e0e0; padding: 8px 10px; background: #fff;">' +
+                '<div style="display: flex; justify-content: space-between; align-items: center; cursor: pointer;" class="dispense-header" data-dispense-details-id="' + detailsId + '">' +
+                  '<div style="flex: 1;">' +
+                    '<strong>' + medicationName + '</strong>' +
+                    '<div class="item-meta" style="margin-top: 4px; font-size: 0.9em; color: #666;">' + meta + '</div>' +
+                  '</div>' +
+                  '<div style="display: flex; align-items: center; gap: 8px; margin-left: 8px;">' +
+                    '<span class="badge badge-' + statusClass + '" style="padding: 4px 8px; border-radius: 4px; font-size: 0.8em; font-weight: 600;">' + status.toUpperCase() + '</span>' +
+                    '<button type="button" class="dispense-details-toggle" data-dispense-details-id="' + detailsId + '" style="padding: 3px 8px; font-size: 0.8em; border-radius: 4px; border: 1px solid #ced4da; background: #f8f9fa; cursor: pointer;">' +
+                      '<span class="dispense-details-toggle-text">Details</span>' +
+                    '</button>' +
+                  '</div>' +
+                '</div>' +
+                '<div id="' + detailsId + '" class="dispense-details" style="display: none; margin-top: 8px; padding-top: 8px; border-top: 1px dashed #e0e0e0; font-size: 0.85em; max-height: 400px; overflow: auto; background: #f8f9fa; border-radius: 4px; padding: 12px;">' +
+                  detailsHtml +
+                '</div>' +
+              '</li>';
+    });
+    
+    html += '</ul>';
+    $('#medication-dispense-report').html(html);
+  };
+
+  /**
+   * Helper function to format MedicationDispense details in a readable way
+   * @param {Object} dispense - MedicationDispense resource
+   * @returns {string} HTML string with formatted details
+   */
+  function formatMedicationDispenseDetails(dispense) {
+    if (!dispense) return '<p>No dispense data available</p>';
+    
+    var html = '<div style="display: grid; grid-template-columns: 180px 1fr; gap: 8px 12px; font-size: 0.9em;">';
+    
+    // Helper to format a field
+    function addField(label, value, isMultiline) {
+      if (value === null || value === undefined || value === '') {
+        value = '<span style="color: #999; font-style: italic;">-</span>';
+      }
+      var valueStyle = isMultiline ? 'grid-column: 2; white-space: pre-wrap; word-break: break-word;' : 'grid-column: 2;';
+      html += '<div style="font-weight: 600; color: #495057;">' + label + ':</div>';
+      html += '<div style="' + valueStyle + ' color: #212529;">' + value + '</div>';
+    }
+    
+    // Basic Information
+    html += '<div style="grid-column: 1 / -1; font-weight: 700; color: #007bff; margin-top: 8px; margin-bottom: 4px; padding-bottom: 4px; border-bottom: 1px solid #dee2e6;">Basic Information</div>';
+    addField('Resource ID', dispense.id);
+    addField('Resource Type', dispense.resourceType);
+    addField('Status', dispense.status);
+    if (dispense.category) {
+      var categoryText = dispense.category.text || (dispense.category.coding && dispense.category.coding[0] ? (dispense.category.coding[0].display || dispense.category.coding[0].code) : '-');
+      addField('Category', categoryText);
+    }
+    if (dispense.type) {
+      var typeText = dispense.type.text || (dispense.type.coding && dispense.type.coding[0] ? (dispense.type.coding[0].display || dispense.type.coding[0].code) : '-');
+      addField('Type', typeText);
+    }
+    
+    // Medication Information
+    html += '<div style="grid-column: 1 / -1; font-weight: 700; color: #007bff; margin-top: 12px; margin-bottom: 4px; padding-bottom: 4px; border-bottom: 1px solid #dee2e6;">Medication Information</div>';
+    if (dispense.medicationCodeableConcept) {
+      if (dispense.medicationCodeableConcept.text) addField('Medication Name', dispense.medicationCodeableConcept.text);
+      if (dispense.medicationCodeableConcept.coding && dispense.medicationCodeableConcept.coding.length > 0) {
+        var codings = dispense.medicationCodeableConcept.coding.map(function(c) {
+          return (c.display || c.code) + (c.system ? ' (' + c.system + ')' : '');
+        }).join('<br>');
+        addField('Coding', codings, true);
+      }
+    }
+    if (dispense.medicationReference) {
+      addField('Medication Reference', dispense.medicationReference.reference || dispense.medicationReference.display);
+    }
+    
+    // Quantity and Dates
+    html += '<div style="grid-column: 1 / -1; font-weight: 700; color: #007bff; margin-top: 12px; margin-bottom: 4px; padding-bottom: 4px; border-bottom: 1px solid #dee2e6;">Dispense Details</div>';
+    if (dispense.quantity) {
+      var qtyText = (dispense.quantity.value || '') + ' ' + (dispense.quantity.unit || '');
+      if (dispense.quantity.system) qtyText += ' (' + dispense.quantity.system + ')';
+      addField('Quantity', qtyText);
+    }
+    if (dispense.whenPrepared) {
+      addField('When Prepared', new Date(dispense.whenPrepared).toLocaleString());
+    }
+    if (dispense.whenHandedOver) {
+      addField('When Handed Over', new Date(dispense.whenHandedOver).toLocaleString());
+    } else if (dispense._whenHandedOver && dispense._whenHandedOver.extension) {
+      var dataAbsentReason = dispense._whenHandedOver.extension.find(function(ext) {
+        return ext.url === 'http://hl7.org/fhir/StructureDefinition/data-absent-reason';
+      });
+      if (dataAbsentReason && dataAbsentReason.valueCode) {
+        addField('When Handed Over', dataAbsentReason.valueCode);
+      }
+    }
+    
+    // Performer
+    if (dispense.performer && dispense.performer.length > 0) {
+      html += '<div style="grid-column: 1 / -1; font-weight: 700; color: #007bff; margin-top: 12px; margin-bottom: 4px; padding-bottom: 4px; border-bottom: 1px solid #dee2e6;">Performer</div>';
+      dispense.performer.forEach(function(perf, idx) {
+        if (idx > 0) html += '<div style="grid-column: 1 / -1; margin-top: 8px; padding-top: 8px; border-top: 1px dashed #dee2e6;"></div>';
+        if (perf.actor) {
+          if (perf.actor.display) addField('Name', perf.actor.display);
+          if (perf.actor.reference) addField('Reference', perf.actor.reference);
+          if (perf.actor.type) addField('Type', perf.actor.type);
+        }
+      });
+    }
+    
+    // Location
+    if (dispense.location) {
+      html += '<div style="grid-column: 1 / -1; font-weight: 700; color: #007bff; margin-top: 12px; margin-bottom: 4px; padding-bottom: 4px; border-bottom: 1px solid #dee2e6;">Location</div>';
+      if (dispense.location.display) addField('Location Name', dispense.location.display);
+      if (dispense.location.reference) addField('Location Reference', dispense.location.reference);
+    }
+    
+    // Authorizing Prescription
+    if (dispense.authorizingPrescription && dispense.authorizingPrescription.length > 0) {
+      html += '<div style="grid-column: 1 / -1; font-weight: 700; color: #007bff; margin-top: 12px; margin-bottom: 4px; padding-bottom: 4px; border-bottom: 1px solid #dee2e6;">Authorizing Prescription</div>';
+      dispense.authorizingPrescription.forEach(function(prescription, idx) {
+        if (idx > 0) html += '<div style="grid-column: 1 / -1; margin-top: 8px;"></div>';
+        if (prescription.reference) addField('Prescription ' + (idx + 1), prescription.reference);
+      });
+    }
+    
+    // Encounter/Context
+    if (dispense.context || dispense.encounter) {
+      html += '<div style="grid-column: 1 / -1; font-weight: 700; color: #007bff; margin-top: 12px; margin-bottom: 4px; padding-bottom: 4px; border-bottom: 1px solid #dee2e6;">Encounter</div>';
+      if (dispense.context && dispense.context.reference) addField('Context Reference', dispense.context.reference);
+      if (dispense.encounter && dispense.encounter.reference) addField('Encounter Reference', dispense.encounter.reference);
+    }
+    
+    // Subject
+    if (dispense.subject) {
+      html += '<div style="grid-column: 1 / -1; font-weight: 700; color: #007bff; margin-top: 12px; margin-bottom: 4px; padding-bottom: 4px; border-bottom: 1px solid #dee2e6;">Subject</div>';
+      if (dispense.subject.display) addField('Patient Name', dispense.subject.display);
+      if (dispense.subject.reference) addField('Patient Reference', dispense.subject.reference);
+    }
+    
+    // Dosage Instructions
+    if (dispense.dosageInstruction && dispense.dosageInstruction.length > 0) {
+      html += '<div style="grid-column: 1 / -1; font-weight: 700; color: #007bff; margin-top: 12px; margin-bottom: 4px; padding-bottom: 4px; border-bottom: 1px solid #dee2e6;">Dosage Instructions</div>';
+      dispense.dosageInstruction.forEach(function(dosage, idx) {
+        if (idx > 0) html += '<div style="grid-column: 1 / -1; margin-top: 8px; padding-top: 8px; border-top: 1px dashed #dee2e6;"></div>';
+        if (dosage.text) addField('Instructions', dosage.text, true);
+        if (dosage.route && dosage.route.coding && dosage.route.coding[0]) {
+          addField('Route', (dosage.route.coding[0].display || dosage.route.coding[0].code) + (dosage.route.coding[0].system ? ' (' + dosage.route.coding[0].system + ')' : ''));
+        }
+        if (dosage.doseAndRate && dosage.doseAndRate[0]) {
+          var dose = dosage.doseAndRate[0];
+          if (dose.doseQuantity) {
+            addField('Dose', (dose.doseQuantity.value || '') + ' ' + (dose.doseQuantity.unit || ''));
+          }
+          if (dose.rateQuantity) {
+            addField('Rate', (dose.rateQuantity.value || '') + ' ' + (dose.rateQuantity.unit || ''));
+          }
+        }
+        if (dosage.timing) {
+          if (dosage.timing.repeat) {
+            var timing = '';
+            if (dosage.timing.repeat.frequency) timing += dosage.timing.repeat.frequency + 'x';
+            if (dosage.timing.repeat.period) timing += ' every ' + dosage.timing.repeat.period + ' ' + (dosage.timing.repeat.periodUnit || '');
+            if (timing) addField('Frequency', timing);
+          }
+          if (dosage.timing.code && dosage.timing.code.text) {
+            addField('Schedule', dosage.timing.code.text);
+          }
+        }
+      });
+    }
+    
+    // Notes
+    if (dispense.note && dispense.note.length > 0) {
+      html += '<div style="grid-column: 1 / -1; font-weight: 700; color: #007bff; margin-top: 12px; margin-bottom: 4px; padding-bottom: 4px; border-bottom: 1px solid #dee2e6;">Notes</div>';
+      dispense.note.forEach(function(note, idx) {
+        if (idx > 0) html += '<div style="grid-column: 1 / -1; margin-top: 8px;"></div>';
+        if (note.text) addField('Note ' + (idx + 1), note.text, true);
+        if (note.authorString) addField('Author', note.authorString);
+        if (note.time) addField('Time', new Date(note.time).toLocaleString());
+      });
+    }
+    
+    // Meta Information
+    if (dispense.meta) {
+      html += '<div style="grid-column: 1 / -1; font-weight: 700; color: #007bff; margin-top: 12px; margin-bottom: 4px; padding-bottom: 4px; border-bottom: 1px solid #dee2e6;">Meta Information</div>';
+      if (dispense.meta.lastUpdated) addField('Last Updated', new Date(dispense.meta.lastUpdated).toLocaleString());
+      if (dispense.meta.versionId) addField('Version', dispense.meta.versionId);
+      if (dispense.meta.profile && dispense.meta.profile.length > 0) {
+        addField('Profile', dispense.meta.profile.join('<br>'), true);
+      }
+    }
+    
+    html += '</div>';
+    return html;
+  }
+
+  /**
+   * Search all MedicationDispense resources in the sandbox (without patient filter)
+   * @param {number} count - Maximum number of results to return (default: 100)
+   * @returns {Promise} Promise that resolves with MedicationDispense resources
+   */
+  window.searchAllMedicationDispenses = function(count) {
+    if (!window.smartClient) {
+      return Promise.reject(new Error('SMART client not initialized. Please launch the app from an EHR.'));
+    }
+
+    var smart = window.smartClient;
+    var maxCount = count || 100;
+    
+    // Search without patient filter to get all dispenses
+    var url = smart.state.serverUrl + '/MedicationDispense?_count=' + maxCount;
+    var wrappedUrl = wrapWithProxy(url);
+
+    console.log('Searching all MedicationDispense resources in sandbox...');
+
+    // Get access token
+    var accessToken = null;
+    if (smart.state && smart.state.tokenResponse) {
+      if (smart.state.tokenResponse.access_token) {
+        accessToken = smart.state.tokenResponse.access_token;
+      } else if (smart.state.tokenResponse.tokenResponse && smart.state.tokenResponse.tokenResponse.access_token) {
+        accessToken = smart.state.tokenResponse.tokenResponse.access_token;
+      }
+    }
+
+    return fetch(wrappedUrl, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/fhir+json',
+        'Authorization': accessToken ? 'Bearer ' + accessToken : ''
+      }
+    })
+    .then(function(response) {
+      if (!response.ok) {
+        throw new Error('Failed to search MedicationDispense: ' + response.status + ' ' + response.statusText);
+      }
+      return response.json();
+    })
+    .then(function(data) {
+      var dispenses = [];
+      if (data.entry && data.entry.length > 0) {
+        dispenses = data.entry.map(function(entry) {
+          return entry.resource;
+        });
+      }
+      console.log('Found ' + dispenses.length + ' MedicationDispense resources');
+      return dispenses;
+    })
+    .catch(function(error) {
+      console.error('Error searching MedicationDispense:', error);
+      throw error;
+    });
+  };
+
+  /**
+   * Search all Patients in the sandbox (bulk read)
+   * @param {number} count - Maximum number of results to return (default: 100)
+   * @returns {Promise} Promise that resolves with Patient resources
+   */
+  window.searchAllPatients = function(count) {
+    if (!window.smartClient) {
+      return Promise.reject(new Error('SMART client not initialized. Please launch the app from an EHR.'));
+    }
+
+    var smart = window.smartClient;
+    var maxCount = count || 100;
+    
+    // Search all patients (may require system-level scopes)
+    var url = smart.state.serverUrl + '/Patient?_count=' + maxCount;
+    var wrappedUrl = wrapWithProxy(url);
+
+    console.log('Searching all Patient resources in sandbox...');
+
+    // Get access token
+    var accessToken = null;
+    if (smart.state && smart.state.tokenResponse) {
+      if (smart.state.tokenResponse.access_token) {
+        accessToken = smart.state.tokenResponse.access_token;
+      } else if (smart.state.tokenResponse.tokenResponse && smart.state.tokenResponse.tokenResponse.access_token) {
+        accessToken = smart.state.tokenResponse.tokenResponse.access_token;
+      }
+    }
+
+    return fetch(wrappedUrl, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/fhir+json',
+        'Authorization': accessToken ? 'Bearer ' + accessToken : ''
+      }
+    })
+    .then(function(response) {
+      if (!response.ok) {
+        // If we get 403 or similar, it means we don't have system-level access
+        throw new Error('Failed to search all Patients: ' + response.status + ' ' + response.statusText + ' (May require system-level scopes)');
+      }
+      return response.json();
+    })
+    .then(function(data) {
+      var patients = [];
+      if (data.entry && data.entry.length > 0) {
+        patients = data.entry.map(function(entry) {
+          return entry.resource;
+        });
+      }
+      console.log('Found ' + patients.length + ' Patient resources');
+      return patients;
+    })
+    .catch(function(error) {
+      console.error('Error searching all Patients:', error);
+      throw error;
+    });
+  };
+
+  /**
+   * Check if a patient has MedicationDispense resources
+   * @param {string} patientId - Patient ID to check
+   * @returns {Promise} Promise that resolves with array of MedicationDispense resources (empty if none)
+   */
+  window.checkPatientForDispenses = function(patientId) {
+    if (!window.smartClient) {
+      return Promise.reject(new Error('SMART client not initialized. Please launch the app from an EHR.'));
+    }
+
+    var smart = window.smartClient;
+    var url = smart.state.serverUrl + '/MedicationDispense?patient=' + patientId + '&_count=1';
+    var wrappedUrl = wrapWithProxy(url);
+
+    // Get access token
+    var accessToken = null;
+    if (smart.state && smart.state.tokenResponse) {
+      if (smart.state.tokenResponse.access_token) {
+        accessToken = smart.state.tokenResponse.access_token;
+      } else if (smart.state.tokenResponse.tokenResponse && smart.state.tokenResponse.tokenResponse.access_token) {
+        accessToken = smart.state.tokenResponse.tokenResponse.access_token;
+      }
+    }
+
+    return fetch(wrappedUrl, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/fhir+json',
+        'Authorization': accessToken ? 'Bearer ' + accessToken : ''
+      }
+    })
+    .then(function(response) {
+      if (!response.ok) {
+        // If patient-scoped, we might not have access to other patients
+        return { entry: [] };
+      }
+      return response.json();
+    })
+    .then(function(data) {
+      var dispenses = [];
+      if (data.entry && data.entry.length > 0) {
+        dispenses = data.entry.map(function(entry) {
+          return entry.resource;
+        });
+      }
+      return dispenses;
+    })
+    .catch(function(error) {
+      console.warn('Error checking patient ' + patientId + ' for dispenses:', error);
+      return []; // Return empty array on error
+    });
+  };
+
+  /**
+   * Find all patients with MedicationDispense resources using bulk patient search
+   * This is a fallback when direct MedicationDispense search returns empty
+   * Strategy: Since we can search all patients (system-level access), we'll:
+   * 1. Get all patients
+   * 2. Try searching all MedicationDispense again (might work with system access)
+   * 3. Match dispenses to patients
+   * 4. If that doesn't work, we know there are no dispenses in the sandbox
+   * @param {number} maxPatients - Maximum number of patients to check (default: 50)
+   * @returns {Promise} Promise that resolves with object containing patients and dispenseCounts
+   */
+  window.findPatientsWithDispensesBulk = function(maxPatients) {
+    if (!window.smartClient) {
+      return Promise.reject(new Error('SMART client not initialized. Please launch the app from an EHR.'));
+    }
+
+    var max = maxPatients || 50;
+    
+    console.log('Attempting bulk patient search approach...');
+    
+    // Step 1: Get all patients
+    return window.searchAllPatients(max)
+      .then(function(patients) {
+        if (!patients || patients.length === 0) {
+          console.log('No patients found in sandbox');
+          return { patients: [], dispenseCounts: {} };
+        }
+        
+        console.log('Found ' + patients.length + ' patients. Now trying to search all MedicationDispense resources...');
+        
+        // Step 2: Since we have system-level access (can search all patients),
+        // try searching all MedicationDispense again - it might work now
+        return window.searchAllMedicationDispenses(500) // Try a larger count
+          .then(function(allDispenses) {
+            console.log('Found ' + (allDispenses ? allDispenses.length : 0) + ' MedicationDispense resources via system search');
+            
+            if (!allDispenses || allDispenses.length === 0) {
+              // No dispenses found even with system access - they don't exist in sandbox
+              console.log('No MedicationDispense resources found in sandbox (even with system-level access)');
+              return { patients: [], dispenseCounts: {} };
+            }
+            
+            // Step 3: Extract patient IDs from dispenses and match with patients we found
+            var patientIdSet = new Set();
+            var dispenseCounts = {};
+            
+            allDispenses.forEach(function(dispense) {
+              if (dispense.subject && dispense.subject.reference) {
+                var match = dispense.subject.reference.match(/^Patient\/(.+)$/);
+                if (match && match[1]) {
+                  var patientId = match[1];
+                  patientIdSet.add(patientId);
+                  dispenseCounts[patientId] = (dispenseCounts[patientId] || 0) + 1;
+                }
+              }
+            });
+            
+            var patientIdsWithDispenses = Array.from(patientIdSet);
+            console.log('Found ' + patientIdsWithDispenses.length + ' unique patients with medication dispenses');
+            
+            // Step 4: Match patients we found with those who have dispenses
+            var patientsWithDispenses = patients.filter(function(patient) {
+              return patientIdsWithDispenses.includes(patient.id);
+            });
+            
+            console.log('Matched ' + patientsWithDispenses.length + ' patients with their demographics');
+            
+            return {
+              patients: patientsWithDispenses,
+              dispenseCounts: dispenseCounts
+            };
+          })
+          .catch(function(dispenseError) {
+            console.warn('Could not search all MedicationDispense (may require system scopes):', dispenseError);
+            // If we can't search all dispenses, we can't determine which patients have them
+            // Return empty result with helpful message
+            return { 
+              patients: [], 
+              dispenseCounts: {},
+              error: 'Unable to search MedicationDispense resources. May require system-level scopes (system/MedicationDispense.read)'
+            };
+          });
+      })
+      .catch(function(error) {
+        console.error('Error in bulk patient search:', error);
+        throw error;
+      });
+  };
+
+  /**
+   * Get unique patient IDs from MedicationDispense resources
+   * @param {Array} dispenses - Array of MedicationDispense resources
+   * @returns {Array} Array of unique patient IDs
+   */
+  window.extractPatientIdsFromDispenses = function(dispenses) {
+    var patientIds = new Set();
+    
+    dispenses.forEach(function(dispense) {
+      if (dispense.subject && dispense.subject.reference) {
+        // Extract patient ID from reference like "Patient/12345"
+        var match = dispense.subject.reference.match(/^Patient\/(.+)$/);
+        if (match && match[1]) {
+          patientIds.add(match[1]);
+        }
+      }
+    });
+    
+    return Array.from(patientIds);
+  };
+
+  /**
+   * Fetch patient demographics for multiple patient IDs
+   * @param {Array} patientIds - Array of patient IDs
+   * @returns {Promise} Promise that resolves with array of patient resources
+   */
+  window.fetchPatientsDemographics = function(patientIds) {
+    if (!window.smartClient) {
+      return Promise.reject(new Error('SMART client not initialized. Please launch the app from an EHR.'));
+    }
+
+    if (!patientIds || patientIds.length === 0) {
+      return Promise.resolve([]);
+    }
+
+    var smart = window.smartClient;
+    
+    // Get access token
+    var accessToken = null;
+    if (smart.state && smart.state.tokenResponse) {
+      if (smart.state.tokenResponse.access_token) {
+        accessToken = smart.state.tokenResponse.access_token;
+      } else if (smart.state.tokenResponse.tokenResponse && smart.state.tokenResponse.tokenResponse.access_token) {
+        accessToken = smart.state.tokenResponse.tokenResponse.access_token;
+      }
+    }
+
+    // Fetch all patients in parallel
+    var patientPromises = patientIds.map(function(patientId) {
+      var url = smart.state.serverUrl + '/Patient/' + patientId;
+      var wrappedUrl = wrapWithProxy(url);
+      
+      return fetch(wrappedUrl, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/fhir+json',
+          'Authorization': accessToken ? 'Bearer ' + accessToken : ''
+        }
+      })
+      .then(function(response) {
+        if (!response.ok) {
+          console.warn('Failed to fetch patient ' + patientId + ': ' + response.status);
+          return null;
+        }
+        return response.json();
+      })
+      .catch(function(error) {
+        console.warn('Error fetching patient ' + patientId + ':', error);
+        return null;
+      });
+    });
+
+    return Promise.all(patientPromises).then(function(patients) {
+      // Filter out null results (failed fetches)
+      return patients.filter(function(p) { return p !== null; });
+    });
+  };
+
+  /**
+   * Display patients with medication dispenses and their basic demographics
+   * @param {Array} patients - Array of Patient resources
+   * @param {Object} dispenseCounts - Object mapping patient ID to number of dispenses
+   */
+  window.displayPatientsWithDispenses = function(patients, dispenseCounts) {
+    var html = '';
+    
+    if (!patients || patients.length === 0) {
+      html = '<div class="no-data"><i class="fas fa-info-circle"></i><span>No patients with medication dispenses found</span></div>';
+      $('#patients-with-dispenses').html(html);
+      return;
+    }
+
+    // Sort patients by name
+    var sortedPatients = patients.slice().sort(function(a, b) {
+      var nameA = '';
+      var nameB = '';
+      
+      if (a.name && a.name[0]) {
+        var givenA = Array.isArray(a.name[0].given) ? a.name[0].given.join(' ') : (a.name[0].given || '');
+        var familyA = Array.isArray(a.name[0].family) ? a.name[0].family.join(' ') : (a.name[0].family || '');
+        nameA = (familyA + ', ' + givenA).toLowerCase();
+      }
+      
+      if (b.name && b.name[0]) {
+        var givenB = Array.isArray(b.name[0].given) ? b.name[0].given.join(' ') : (b.name[0].given || '');
+        var familyB = Array.isArray(b.name[0].family) ? b.name[0].family.join(' ') : (b.name[0].family || '');
+        nameB = (familyB + ', ' + givenB).toLowerCase();
+      }
+      
+      return nameA.localeCompare(nameB);
+    });
+
+    html = '<div style="margin-bottom: 12px; padding: 8px; background: #e7f3ff; border-radius: 4px; font-size: 0.9em;">';
+    html += '<strong>Found ' + patients.length + ' patient' + (patients.length !== 1 ? 's' : '') + ' with medication dispenses</strong>';
+    html += '</div>';
+    html += '<ul style="list-style: none; padding: 0; margin: 0;">';
+    
+    sortedPatients.forEach(function(patient) {
+      var patientId = patient.id || 'Unknown';
+      
+      // Extract name
+      var firstName = '-';
+      var middleName = '';
+      var lastName = '-';
+      var fullName = 'Unknown Patient';
+      
+      if (patient.name && patient.name[0]) {
+        var givenArr = Array.isArray(patient.name[0].given) ? patient.name[0].given : (patient.name[0].given ? [patient.name[0].given] : []);
+        var familyVal = Array.isArray(patient.name[0].family) ? patient.name[0].family.join(' ') : (patient.name[0].family || '');
+        
+        if (givenArr.length > 0) {
+          firstName = givenArr[0];
+        }
+        if (givenArr.length > 1) {
+          middleName = givenArr.slice(1).join(' ');
+        }
+        lastName = familyVal || '-';
+        
+        var nameParts = [];
+        if (lastName !== '-') nameParts.push(lastName);
+        if (firstName !== '-') nameParts.push(firstName);
+        if (middleName) nameParts.push(middleName);
+        fullName = nameParts.join(', ') || 'Unknown Patient';
+      }
+      
+      // Extract gender
+      var gender = patient.gender || '-';
+      if (gender !== '-') {
+        gender = gender.charAt(0).toUpperCase() + gender.slice(1);
+      }
+      
+      // Extract birth date
+      var birthDate = patient.birthDate || '-';
+      
+      // Extract address
+      var address = '-';
+      var city = '-';
+      var state = '-';
+      var zip = '-';
+      
+      if (patient.address && patient.address[0]) {
+        var addr = patient.address[0];
+        if (addr.line && addr.line.length > 0) {
+          address = addr.line[0] || '-';
+        }
+        city = addr.city || '-';
+        state = addr.state || '-';
+        zip = addr.postalCode || '-';
+      }
+      
+      // Extract phone
+      var phone = '-';
+      if (patient.telecom) {
+        var phoneContact = patient.telecom.find(function(t) {
+          return t.system === 'phone';
+        });
+        if (phoneContact && phoneContact.value) {
+          phone = phoneContact.value;
+        }
+      }
+      
+      // Extract email
+      var email = '-';
+      if (patient.telecom) {
+        var emailContact = patient.telecom.find(function(t) {
+          return t.system === 'email';
+        });
+        if (emailContact && emailContact.value) {
+          email = emailContact.value;
+        }
+      }
+      
+      // Get dispense count
+      var dispenseCount = dispenseCounts && dispenseCounts[patientId] ? dispenseCounts[patientId] : 0;
+      
+      // Patient status
+      var status = patient.active === false ? 'Inactive' : 'Active';
+      var statusClass = patient.active === false ? 'warning' : 'success';
+      
+      html += '<li style="margin-bottom: 12px; border-radius: 4px; border: 1px solid #e0e0e0; padding: 12px; background: #fff;">';
+      html += '<div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">';
+      html += '<div style="flex: 1;">';
+      html += '<div style="font-size: 1.1em; font-weight: 600; color: #007bff; margin-bottom: 4px;">' + fullName + '</div>';
+      html += '<div style="font-size: 0.85em; color: #666; margin-top: 4px;">';
+      html += '<span style="margin-right: 12px;"><strong>Patient ID:</strong> ' + patientId + '</span>';
+      html += '<span class="badge badge-' + statusClass + '" style="padding: 2px 6px; border-radius: 3px; font-size: 0.8em; font-weight: 600; margin-right: 12px;">' + status + '</span>';
+      html += '<span><strong>Dispenses:</strong> ' + dispenseCount + '</span>';
+      html += '</div>';
+      html += '</div>';
+      html += '</div>';
+      
+      // Demographics grid
+      html += '<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-top: 8px; padding-top: 8px; border-top: 1px solid #f0f0f0; font-size: 0.9em;">';
+      html += '<div><strong style="color: #666;">Gender:</strong> ' + gender + '</div>';
+      html += '<div><strong style="color: #666;">Date of Birth:</strong> ' + birthDate + '</div>';
+      if (address !== '-') {
+        html += '<div><strong style="color: #666;">Address:</strong> ' + address;
+        if (city !== '-') html += ', ' + city;
+        if (state !== '-') html += ', ' + state;
+        if (zip !== '-') html += ' ' + zip;
+        html += '</div>';
+      }
+      if (phone !== '-') {
+        html += '<div><strong style="color: #666;">Phone:</strong> ' + phone + '</div>';
+      }
+      if (email !== '-') {
+        html += '<div><strong style="color: #666;">Email:</strong> ' + email + '</div>';
+      }
+      html += '</div>';
+      
+      html += '</li>';
+    });
+    
+    html += '</ul>';
+    $('#patients-with-dispenses').html(html);
+  };
+
+  /**
    * Helper function to find available Encounters for the current patient
    * @param {number} count - Maximum number of encounters to return (default: 50)
    * @returns {Promise} Promise that resolves with available encounters
@@ -1611,6 +2490,19 @@
           }
         });
         
+        // 6. Load MedicationDispense Report
+        var dispenseUrl = buildUrl('MedicationDispense', { patient: patientId, _count: 100 });
+        makeRequest(dispenseUrl, 'MedicationDispense').then(function(bundle) {
+          if (bundle && bundle.entry) {
+            var dispenses = bundle.entry.map(function(e) { return e.resource; });
+            if (typeof window.displayMedicationDispenses === 'function') {
+              window.displayMedicationDispenses(dispenses);
+            }
+          } else {
+            $('#medication-dispense-report').html('<p class="no-data">No medication dispenses available</p>');
+          }
+        });
+        
         // 6. Load Documents
         var docUrl = buildUrl('DocumentReference', { patient: patientId, _count: 100 });
         makeRequest(docUrl, 'Documents').then(function(bundle) {
@@ -1662,6 +2554,10 @@
     $('#patient-name-display').html(safeFullName);
     $('#gender').html(toSentenceCase(gender) || '-');
     $('#birthdate').html(birthdate || '-');
+    
+    // SSN (from identifiers, if available)
+    var ssn = extractSSNFromPatient(patient);
+    $('#ssn').html(ssn);
     
     // Derive name parts
     var firstName = '-';
@@ -1779,6 +2675,43 @@
     }
     $('#prefers-child-safety-cap').html(prefersChildSafetyCap);
     $('#sms-optin').html(smsOptin);
+  }
+
+  // Helper to extract SSN from Patient.identifier using common patterns
+  function extractSSNFromPatient(patient) {
+    if (!patient || !Array.isArray(patient.identifier)) {
+      return '-';
+    }
+    
+    var ssnValue = '-';
+    
+    patient.identifier.forEach(function(id) {
+      if (!id) return;
+      
+      var system = (id.system || '').toLowerCase();
+      var value = id.value || '';
+      var typeCode = null;
+      var typeDisplay = null;
+      
+      if (id.type && Array.isArray(id.type.coding) && id.type.coding.length > 0) {
+        typeCode = (id.type.coding[0].code || '').toLowerCase();
+        typeDisplay = (id.type.coding[0].display || '').toLowerCase();
+      }
+      
+      var looksLikeSSNSystem =
+        system.indexOf('us-ssn') !== -1 ||
+        system.indexOf('ssn') !== -1;
+      
+      var looksLikeSSNType =
+        typeCode === 'ss' ||
+        (typeDisplay && typeDisplay.indexOf('ssn') !== -1);
+      
+      if ((looksLikeSSNSystem || looksLikeSSNType) && value) {
+        ssnValue = value;
+      }
+    });
+    
+    return ssnValue || '-';
   }
 
   // Helper to safely set a text field on the prescription card
