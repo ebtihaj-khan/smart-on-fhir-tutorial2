@@ -680,7 +680,7 @@
       },
       performer: [{
         actor: {
-          display: 'Foundation Health',
+          display: 'FH VPharmacy (Placeholder)',
           type: 'Organization'
         }
       }],
@@ -2490,6 +2490,44 @@
           }
         });
         
+        // 5.5. Load Consents
+        var consentUrl = buildUrl('Consent', { patient: patientId, _count: 100 });
+        makeRequest(consentUrl, 'Consents').then(function(bundle) {
+          if (bundle && bundle.entry) {
+            var consents = bundle.entry.map(function(e) { return e.resource; });
+            displayConsents(consents);
+            // Store consents globally for search
+            if (typeof window !== 'undefined') {
+              window.allConsents = consents;
+            }
+          } else {
+            $('#consents').html('<p class="no-data">No consents available</p>');
+            if (typeof window !== 'undefined') {
+              window.allConsents = [];
+            }
+          }
+        }).catch(function(error) {
+          console.warn('Error loading consents:', error);
+          $('#consents').html('<p class="no-data">Unable to load consents. This resource may not be available in this system.</p>');
+          if (typeof window !== 'undefined') {
+            window.allConsents = [];
+          }
+        });
+        
+        // 5.6. Load Coverage
+        var coverageUrl = buildUrl('Coverage', { beneficiary: patientId, _count: 100 });
+        makeRequest(coverageUrl, 'Coverage').then(function(bundle) {
+          if (bundle && bundle.entry) {
+            var coverages = bundle.entry.map(function(e) { return e.resource; });
+            displayCoverage(coverages);
+          } else {
+            $('#coverage').html('<p class="no-data">No coverage available</p>');
+          }
+        }).catch(function(error) {
+          console.warn('Error loading coverage:', error);
+          $('#coverage').html('<p class="no-data">Unable to load coverage. This resource may not be available in this system.</p>');
+        });
+        
         // 6. Load MedicationDispense Report
         var dispenseUrl = buildUrl('MedicationDispense', { patient: patientId, _count: 100 });
         makeRequest(dispenseUrl, 'MedicationDispense').then(function(bundle) {
@@ -3772,6 +3810,474 @@
       console.warn('Unable to update conditions summary on patient card:', e);
     }
   }
+  
+  function displayConsents(consents, searchTerm) {
+    var html = '';
+    
+    // Filter consents by search term if provided
+    var filteredConsents = consents || [];
+    if (searchTerm && searchTerm.trim() !== '') {
+      var searchLower = searchTerm.toLowerCase().trim();
+      filteredConsents = filteredConsents.filter(function(consent) {
+        // Search in status
+        var status = (consent.status || '').toLowerCase();
+        // Search in category
+        var categoryText = '';
+        if (consent.category && consent.category.length > 0) {
+          consent.category.forEach(function(cat) {
+            if (cat.coding && cat.coding.length > 0) {
+              cat.coding.forEach(function(coding) {
+                if (coding.display) categoryText += ' ' + coding.display.toLowerCase();
+                if (coding.code) categoryText += ' ' + coding.code.toLowerCase();
+              });
+            }
+            if (cat.text) categoryText += ' ' + cat.text.toLowerCase();
+          });
+        }
+        // Search in scope
+        var scopeText = '';
+        if (consent.scope && consent.scope.coding && consent.scope.coding.length > 0) {
+          consent.scope.coding.forEach(function(coding) {
+            if (coding.display) scopeText += ' ' + coding.display.toLowerCase();
+            if (coding.code) scopeText += ' ' + coding.code.toLowerCase();
+          });
+        }
+        // Search in source reference
+        var sourceText = '';
+        if (consent.sourceReference && consent.sourceReference.display) {
+          sourceText = consent.sourceReference.display.toLowerCase();
+        }
+        // Search in policy text
+        var policyText = '';
+        if (consent.policy && consent.policy.length > 0) {
+          consent.policy.forEach(function(pol) {
+            if (pol.authority) policyText += ' ' + pol.authority.toLowerCase();
+            if (pol.uri) policyText += ' ' + pol.uri.toLowerCase();
+          });
+        }
+        // Search in provision text
+        var provisionText = '';
+        if (consent.provision && consent.provision.type) {
+          provisionText = (consent.provision.type || '').toLowerCase();
+        }
+        
+        return status.indexOf(searchLower) !== -1 ||
+               categoryText.indexOf(searchLower) !== -1 ||
+               scopeText.indexOf(searchLower) !== -1 ||
+               sourceText.indexOf(searchLower) !== -1 ||
+               policyText.indexOf(searchLower) !== -1 ||
+               provisionText.indexOf(searchLower) !== -1;
+      });
+    }
+    
+    if (filteredConsents && filteredConsents.length > 0) {
+      // Sort consents by date (most recent first)
+      var sortedConsents = filteredConsents.sort(function(a, b) {
+        var dateA = new Date((a.meta && a.meta.lastUpdated) || a.dateTime || 0);
+        var dateB = new Date((b.meta && b.meta.lastUpdated) || b.dateTime || 0);
+        return dateB - dateA; // Most recent first
+      });
+      
+      var resultHeader = '';
+      if (searchTerm && searchTerm.trim() !== '' && filteredConsents.length < consents.length) {
+        resultHeader = '<div style="margin-bottom: 12px; padding: 8px; background: #e7f3ff; border-radius: 4px; font-size: 0.9em;">';
+        resultHeader += '<strong>Showing ' + filteredConsents.length + ' of ' + consents.length + ' consent' + (consents.length !== 1 ? 's' : '') + '</strong>';
+        resultHeader += '</div>';
+      }
+      
+      html = resultHeader + '<ul style="list-style: none; padding: 0; margin: 0;">';
+      sortedConsents.forEach(function(consent) {
+        var consentId = consent.id || 'Unknown';
+        
+        // Extract status
+        var status = formatStatus(consent.status) || 'Unknown';
+        var statusClass = consent.status === 'active' ? 'success' : 
+                         (consent.status === 'inactive' ? 'warning' : 
+                         (consent.status === 'proposed' ? 'info' : 'secondary'));
+        
+        // Extract category
+        var category = '-';
+        if (consent.category && consent.category.length > 0) {
+          var categories = [];
+          consent.category.forEach(function(cat) {
+            if (cat.coding && cat.coding.length > 0) {
+              cat.coding.forEach(function(coding) {
+                if (coding.display) {
+                  categories.push(coding.display);
+                } else if (coding.code) {
+                  categories.push(coding.code);
+                }
+              });
+            } else if (cat.text) {
+              categories.push(cat.text);
+            }
+          });
+          if (categories.length > 0) {
+            category = categories.join(', ');
+          }
+        }
+        
+        // Extract scope
+        var scope = '-';
+        if (consent.scope && consent.scope.coding && consent.scope.coding.length > 0) {
+          scope = consent.scope.coding[0].display || consent.scope.coding[0].code || '-';
+        } else if (consent.scope && consent.scope.text) {
+          scope = consent.scope.text;
+        }
+        
+        // Extract date/time
+        var dateTime = '-';
+        if (consent.dateTime) {
+          dateTime = new Date(consent.dateTime).toLocaleString();
+        } else if (consent.meta && consent.meta.lastUpdated) {
+          dateTime = new Date(consent.meta.lastUpdated).toLocaleString();
+        }
+        
+        // Extract source
+        var source = '-';
+        if (consent.sourceReference && consent.sourceReference.display) {
+          source = consent.sourceReference.display;
+        } else if (consent.sourceReference && consent.sourceReference.reference) {
+          source = consent.sourceReference.reference;
+        } else if (consent.sourceAttachment && consent.sourceAttachment.title) {
+          source = consent.sourceAttachment.title;
+        }
+        
+        // Extract policy
+        var policy = '-';
+        if (consent.policy && consent.policy.length > 0) {
+          var policies = [];
+          consent.policy.forEach(function(pol) {
+            if (pol.authority) {
+              policies.push(pol.authority);
+            } else if (pol.uri) {
+              policies.push(pol.uri);
+            }
+          });
+          if (policies.length > 0) {
+            policy = policies.join(', ');
+          }
+        }
+        
+        // Extract provision type
+        var provisionType = '-';
+        if (consent.provision && consent.provision.type) {
+          provisionType = formatStatus(consent.provision.type);
+        }
+        
+        // Extract patient
+        var patientRef = '-';
+        if (consent.patient && consent.patient.reference) {
+          patientRef = consent.patient.reference;
+        } else if (consent.patient && consent.patient.display) {
+          patientRef = consent.patient.display;
+        }
+        
+        // Extract performer
+        var performer = '-';
+        if (consent.performer && consent.performer.length > 0) {
+          var performers = [];
+          consent.performer.forEach(function(perf) {
+            if (perf.display) {
+              performers.push(perf.display);
+            } else if (perf.reference) {
+              performers.push(perf.reference);
+            }
+          });
+          if (performers.length > 0) {
+            performer = performers.join(', ');
+          }
+        }
+        
+        var meta = status;
+        if (category !== '-') meta += ' • Category: ' + category;
+        if (scope !== '-') meta += ' • Scope: ' + scope;
+        if (dateTime !== '-') meta += ' • Date: ' + dateTime;
+        if (source !== '-') meta += ' • Source: ' + source;
+        if (policy !== '-') meta += ' • Policy: ' + policy;
+        if (provisionType !== '-') meta += ' • Provision: ' + provisionType;
+        if (performer !== '-') meta += ' • Performer: ' + performer;
+        
+        html += '<li style="margin-bottom: 12px; border-radius: 4px; border: 1px solid #e0e0e0; padding: 12px; background: #fff;">';
+        html += '<div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">';
+        html += '<div style="flex: 1;">';
+        html += '<div style="font-size: 1.1em; font-weight: 600; color: #007bff; margin-bottom: 4px;">';
+        html += '<span class="badge badge-' + statusClass + '" style="padding: 2px 6px; border-radius: 3px; font-size: 0.8em; font-weight: 600; margin-right: 8px;">' + status + '</span>';
+        html += scope !== '-' ? scope : 'Consent';
+        html += '</div>';
+        html += '<div style="font-size: 0.85em; color: #666; margin-top: 4px;">';
+        html += '<span style="margin-right: 12px;"><strong>ID:</strong> ' + consentId + '</span>';
+        if (patientRef !== '-') {
+          html += '<span style="margin-right: 12px;"><strong>Patient:</strong> ' + patientRef + '</span>';
+        }
+        html += '</div>';
+        html += '</div>';
+        html += '</div>';
+        
+        // Details grid
+        html += '<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-top: 8px; padding-top: 8px; border-top: 1px solid #f0f0f0; font-size: 0.9em;">';
+        if (category !== '-') {
+          html += '<div><strong style="color: #666;">Category:</strong> ' + category + '</div>';
+        }
+        if (scope !== '-') {
+          html += '<div><strong style="color: #666;">Scope:</strong> ' + scope + '</div>';
+        }
+        if (dateTime !== '-') {
+          html += '<div><strong style="color: #666;">Date/Time:</strong> ' + dateTime + '</div>';
+        }
+        if (source !== '-') {
+          html += '<div><strong style="color: #666;">Source:</strong> ' + source + '</div>';
+        }
+        if (policy !== '-') {
+          html += '<div><strong style="color: #666;">Policy:</strong> ' + policy + '</div>';
+        }
+        if (provisionType !== '-') {
+          html += '<div><strong style="color: #666;">Provision Type:</strong> ' + provisionType + '</div>';
+        }
+        if (performer !== '-') {
+          html += '<div><strong style="color: #666;">Performer:</strong> ' + performer + '</div>';
+        }
+        html += '</div>';
+        
+        html += '</li>';
+      });
+      html += '</ul>';
+    } else {
+      if (searchTerm && searchTerm.trim() !== '') {
+        html = '<div class="no-data"><i class="fas fa-info-circle"></i><span>No consents found matching "' + searchTerm + '"</span></div>';
+      } else {
+        html = '<div class="no-data"><i class="fas fa-info-circle"></i><span>No consents available</span></div>';
+      }
+    }
+    $('#consents').html(html);
+  }
+  
+  // Make displayConsents globally accessible for search
+  window.displayConsents = displayConsents;
+  
+  function displayCoverage(coverages) {
+    var html = '';
+    
+    if (coverages && coverages.length > 0) {
+      // Sort coverages by period start date (most recent first)
+      var sortedCoverages = coverages.sort(function(a, b) {
+        var dateA = new Date((a.period && a.period.start) || (a.meta && a.meta.lastUpdated) || 0);
+        var dateB = new Date((b.period && b.period.start) || (b.meta && b.meta.lastUpdated) || 0);
+        return dateB - dateA; // Most recent first
+      });
+      
+      html = '<ul style="list-style: none; padding: 0; margin: 0;">';
+      sortedCoverages.forEach(function(coverage) {
+        var coverageId = coverage.id || 'Unknown';
+        
+        // Extract status
+        var status = formatStatus(coverage.status) || 'Unknown';
+        var statusClass = coverage.status === 'active' ? 'success' : 
+                         (coverage.status === 'cancelled' ? 'warning' : 
+                         (coverage.status === 'draft' ? 'info' : 'secondary'));
+        
+        // Extract type
+        var type = '-';
+        if (coverage.type && coverage.type.coding && coverage.type.coding.length > 0) {
+          type = coverage.type.coding[0].display || coverage.type.coding[0].code || '-';
+        } else if (coverage.type && coverage.type.text) {
+          type = coverage.type.text;
+        }
+        
+        // Extract subscriber information
+        var subscriber = '-';
+        var subscriberId = '-';
+        if (coverage.subscriber && coverage.subscriber.reference) {
+          subscriber = coverage.subscriber.reference;
+        } else if (coverage.subscriber && coverage.subscriber.display) {
+          subscriber = coverage.subscriber.display;
+        }
+        if (coverage.subscriberId) {
+          subscriberId = coverage.subscriberId;
+        }
+        
+        // Extract beneficiary
+        var beneficiary = '-';
+        if (coverage.beneficiary && coverage.beneficiary.reference) {
+          beneficiary = coverage.beneficiary.reference;
+        } else if (coverage.beneficiary && coverage.beneficiary.display) {
+          beneficiary = coverage.beneficiary.display;
+        }
+        
+        // Extract dependent number
+        var dependent = '-';
+        if (coverage.dependent) {
+          dependent = coverage.dependent;
+        }
+        
+        // Extract relationship to subscriber
+        var relationship = '-';
+        if (coverage.relationship && coverage.relationship.coding && coverage.relationship.coding.length > 0) {
+          relationship = coverage.relationship.coding[0].display || coverage.relationship.coding[0].code || '-';
+        } else if (coverage.relationship && coverage.relationship.text) {
+          relationship = coverage.relationship.text;
+        }
+        
+        // Extract period
+        var periodStart = '-';
+        var periodEnd = '-';
+        if (coverage.period) {
+          if (coverage.period.start) {
+            periodStart = new Date(coverage.period.start).toLocaleDateString();
+          }
+          if (coverage.period.end) {
+            periodEnd = new Date(coverage.period.end).toLocaleDateString();
+          }
+        }
+        
+        // Extract payor (insurance company)
+        var payor = '-';
+        if (coverage.payor && coverage.payor.length > 0) {
+          var payors = [];
+          coverage.payor.forEach(function(p) {
+            if (p.display) {
+              payors.push(p.display);
+            } else if (p.reference) {
+              payors.push(p.reference);
+            }
+          });
+          if (payors.length > 0) {
+            payor = payors.join(', ');
+          }
+        }
+        
+        // Extract coverage class information
+        var classInfo = [];
+        if (coverage.class && coverage.class.length > 0) {
+          coverage.class.forEach(function(cls) {
+            var classType = cls.type && cls.type.coding && cls.type.coding[0] ? 
+                           (cls.type.coding[0].display || cls.type.coding[0].code) : 
+                           (cls.type && cls.type.text ? cls.type.text : 'Unknown');
+            var classValue = cls.value || '-';
+            var className = cls.name || '-';
+            classInfo.push(classType + ': ' + classValue + (className !== '-' ? ' (' + className + ')' : ''));
+          });
+        }
+        
+        // Extract cost to beneficiary
+        var costToBeneficiary = '-';
+        if (coverage.costToBeneficiary && coverage.costToBeneficiary.length > 0) {
+          var costs = [];
+          coverage.costToBeneficiary.forEach(function(cost) {
+            var costType = cost.type && cost.type.coding && cost.type.coding[0] ? 
+                          (cost.type.coding[0].display || cost.type.coding[0].code) : 
+                          (cost.type && cost.type.text ? cost.type.text : 'Unknown');
+            var costValue = '-';
+            if (cost.valueQuantity) {
+              costValue = (cost.valueQuantity.value || '') + ' ' + (cost.valueQuantity.unit || '');
+            } else if (cost.valueMoney) {
+              costValue = (cost.valueMoney.value || '') + ' ' + (cost.valueMoney.currency || '');
+            }
+            costs.push(costType + ': ' + costValue);
+          });
+          if (costs.length > 0) {
+            costToBeneficiary = costs.join('; ');
+          }
+        }
+        
+        // Extract subrogation
+        var subrogation = '-';
+        if (typeof coverage.subrogation === 'boolean') {
+          subrogation = coverage.subrogation ? 'Yes' : 'No';
+        }
+        
+        // Extract contract references
+        var contract = '-';
+        if (coverage.contract && coverage.contract.length > 0) {
+          var contracts = [];
+          coverage.contract.forEach(function(cont) {
+            if (cont.display) {
+              contracts.push(cont.display);
+            } else if (cont.reference) {
+              contracts.push(cont.reference);
+            }
+          });
+          if (contracts.length > 0) {
+            contract = contracts.join(', ');
+          }
+        }
+        
+        // Extract order
+        var order = '-';
+        if (coverage.order !== undefined && coverage.order !== null) {
+          order = coverage.order.toString();
+        }
+        
+        html += '<li style="margin-bottom: 12px; border-radius: 4px; border: 1px solid #e0e0e0; padding: 12px; background: #fff;">';
+        html += '<div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">';
+        html += '<div style="flex: 1;">';
+        html += '<div style="font-size: 1.1em; font-weight: 600; color: #007bff; margin-bottom: 4px;">';
+        html += '<span class="badge badge-' + statusClass + '" style="padding: 2px 6px; border-radius: 3px; font-size: 0.8em; font-weight: 600; margin-right: 8px;">' + status + '</span>';
+        html += payor !== '-' ? payor : (type !== '-' ? type : 'Coverage');
+        html += '</div>';
+        html += '<div style="font-size: 0.85em; color: #666; margin-top: 4px;">';
+        html += '<span style="margin-right: 12px;"><strong>ID:</strong> ' + coverageId + '</span>';
+        if (type !== '-') {
+          html += '<span style="margin-right: 12px;"><strong>Type:</strong> ' + type + '</span>';
+        }
+        html += '</div>';
+        html += '</div>';
+        html += '</div>';
+        
+        // Details grid
+        html += '<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-top: 8px; padding-top: 8px; border-top: 1px solid #f0f0f0; font-size: 0.9em;">';
+        if (payor !== '-') {
+          html += '<div><strong style="color: #666;">Payor (Insurance):</strong> ' + payor + '</div>';
+        }
+        if (subscriber !== '-') {
+          html += '<div><strong style="color: #666;">Subscriber:</strong> ' + subscriber + '</div>';
+        }
+        if (subscriberId !== '-') {
+          html += '<div><strong style="color: #666;">Subscriber ID:</strong> ' + subscriberId + '</div>';
+        }
+        if (beneficiary !== '-') {
+          html += '<div><strong style="color: #666;">Beneficiary:</strong> ' + beneficiary + '</div>';
+        }
+        if (dependent !== '-') {
+          html += '<div><strong style="color: #666;">Dependent Number:</strong> ' + dependent + '</div>';
+        }
+        if (relationship !== '-') {
+          html += '<div><strong style="color: #666;">Relationship:</strong> ' + relationship + '</div>';
+        }
+        if (periodStart !== '-') {
+          html += '<div><strong style="color: #666;">Coverage Start:</strong> ' + periodStart + '</div>';
+        }
+        if (periodEnd !== '-') {
+          html += '<div><strong style="color: #666;">Coverage End:</strong> ' + periodEnd + '</div>';
+        }
+        if (order !== '-') {
+          html += '<div><strong style="color: #666;">Order:</strong> ' + order + '</div>';
+        }
+        if (subrogation !== '-') {
+          html += '<div><strong style="color: #666;">Subrogation:</strong> ' + subrogation + '</div>';
+        }
+        if (contract !== '-') {
+          html += '<div><strong style="color: #666;">Contract:</strong> ' + contract + '</div>';
+        }
+        if (costToBeneficiary !== '-') {
+          html += '<div style="grid-column: 1 / -1;"><strong style="color: #666;">Cost to Beneficiary:</strong> ' + costToBeneficiary + '</div>';
+        }
+        if (classInfo.length > 0) {
+          html += '<div style="grid-column: 1 / -1;"><strong style="color: #666;">Coverage Class:</strong> ' + classInfo.join('; ') + '</div>';
+        }
+        html += '</div>';
+        
+        html += '</li>';
+      });
+      html += '</ul>';
+    } else {
+      html = '<div class="no-data"><i class="fas fa-info-circle"></i><span>No coverage available</span></div>';
+    }
+    $('#coverage').html(html);
+  }
+  
+  // Make displayCoverage globally accessible
+  window.displayCoverage = displayCoverage;
   
   function displayDocuments(documents) {
     var html = '';

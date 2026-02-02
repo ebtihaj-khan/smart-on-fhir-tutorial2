@@ -364,6 +364,37 @@
           </div>
         </section>
 
+        <!-- Consents Card -->
+        <section class="card consents-card">
+          <div class="card-header" style="display: flex; align-items: center; justify-content: space-between;">
+            <div style="display: flex; align-items: center;">
+              <i class="fas fa-file-signature"></i>
+              <h2 style="margin: 0 0 0 10px;">Patient Consents</h2>
+            </div>
+            <input type="text" id="consent-search-input" placeholder="Search consents..." style="padding: 6px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9em; width: 250px;">
+          </div>
+          <div class="card-content">
+            <div id='consents' class="loading-state">
+              <i class="fas fa-spinner fa-spin"></i>
+              <span>Loading consents...</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- Coverage Card -->
+        <section class="card coverage-card">
+          <div class="card-header">
+            <i class="fas fa-shield-alt"></i>
+            <h2>Insurance Coverage</h2>
+          </div>
+          <div class="card-content">
+            <div id='coverage' class="loading-state">
+              <i class="fas fa-spinner fa-spin"></i>
+              <span>Loading coverage...</span>
+            </div>
+          </div>
+        </section>
+
         <!-- Documents Card -->
         <section class="card documents-card">
           <div class="card-header">
@@ -1192,6 +1223,23 @@
 
       // Store all medications globally for filtering
       window.allMedications = [];
+      
+      // Store all consents globally for search
+      window.allConsents = [];
+      
+      // Handle consent search
+      $('#consent-search-input').on('input', function() {
+        var searchTerm = $(this).val();
+        
+        if (window.allConsents && window.allConsents.length > 0) {
+          if (typeof window.displayConsents === 'function') {
+            window.displayConsents(window.allConsents, searchTerm);
+          }
+        } else {
+          // If consents not cached, show message
+          $('#consents').html('<div class="no-data"><i class="fas fa-info-circle"></i><span>No consents loaded. Please refresh the page.</span></div>');
+        }
+      });
       
       // Handle medication filter by encounter
       $('#medication-filter-encounter').on('change', function() {
