@@ -54,14 +54,98 @@ body {
 
 /* App Container */
 .app-container {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 16px;
   display: none;
+  min-height: 100vh;
+  background: #f8fafc;
 }
 
 .app-container.show {
+  display: flex;
+}
+
+/* Sidebar Layout */
+.app-sidebar {
+  width: 220px;
+  min-width: 220px;
+  background: #ffffff;
+  border-right: 1px solid #e2e8f0;
+  padding: 20px 0;
+  flex-shrink: 0;
+}
+
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sidebar-nav .nav-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 20px;
+  color: #4a5568;
+  text-decoration: none;
+  font-weight: 500;
+  font-size: 14px;
+  transition: all 0.2s ease;
+  border-left: 3px solid transparent;
+  margin: 0 8px;
+  border-radius: 6px;
+}
+
+.sidebar-nav .nav-item i {
+  font-size: 16px;
+  width: 20px;
+  text-align: center;
+  color: #718096;
+}
+
+.sidebar-nav .nav-item:hover {
+  background: #f7fafc;
+  color: #2d3748;
+}
+
+.sidebar-nav .nav-item:hover i {
+  color: #3182ce;
+}
+
+.sidebar-nav .nav-item.active {
+  background: #ebf8ff;
+  color: #2b6cb0;
+  border-left-color: #3182ce;
+}
+
+.sidebar-nav .nav-item.active i {
+  color: #3182ce;
+}
+
+/* App Body (main content area) */
+.app-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 16px;
+  max-width: 1200px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+/* Pages (tab content) */
+.page {
+  display: none;
+  flex: 1;
+  animation: fadeIn 0.25s ease;
+}
+
+.page.active {
   display: block;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 /* Header */
@@ -232,6 +316,24 @@ body {
   font-size: 15px;
   font-weight: 500;
   color: #2d3748;
+}
+
+/* RA Data Points - API source indicator */
+.ra-api-source {
+  display: block;
+  font-size: 10px;
+  font-weight: 400;
+  color: #a0aec0;
+  text-transform: none;
+  letter-spacing: 0;
+  margin-top: 2px;
+}
+.ra-api-source .ra-api {
+  color: #a0aec0;
+}
+.ra-api-source .ra-api.ra-api-active {
+  color: #38a169 !important;
+  font-weight: 500;
 }
 
 /* Vitals */
@@ -423,6 +525,32 @@ li .item-meta {
 /* Responsive Design */
 @media (max-width: 768px) {
   .app-container {
+    flex-direction: column;
+  }
+  
+  .app-sidebar {
+    width: 100%;
+    min-width: 100%;
+    border-right: none;
+    border-bottom: 1px solid #e2e8f0;
+    padding: 12px;
+  }
+  
+  .sidebar-nav {
+    flex-direction: row;
+    gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+  
+  .sidebar-nav .nav-item {
+    flex-shrink: 0;
+    padding: 10px 16px;
+    margin: 0;
+    white-space: nowrap;
+  }
+  
+  .app-body {
     padding: 16px;
   }
   

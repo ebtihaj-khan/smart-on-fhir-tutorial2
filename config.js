@@ -25,15 +25,18 @@
     return 'local';
   }
 
+  // Base URL - use current origin so it works with any port (8080, 443, etc.)
+  var baseUrl = window.location.origin;
+  
   // Environment configurations
   var environments = {
     local: {
       clientId: '3e0b9045-0ea9-432a-848f-cccfed325142',
       applicationId: 'ccfeb89f-1051-42c9-b53e-f9a411b69863',
-      redirectUri: 'http://localhost:443/index.html',
-      redirectUriBase: 'http://localhost:443/',
-      launchUri: 'http://localhost:443/launch.html',
-      baseUrl: 'http://localhost:443'
+      redirectUri: baseUrl + '/index.html',
+      redirectUriBase: baseUrl + '/',
+      launchUri: baseUrl + '/launch.html',
+      baseUrl: baseUrl
     },
     deployed: {
       clientId: 'f60d64fd-1ca1-4986-a661-bc28f2fc3ff7',
@@ -55,7 +58,7 @@
   config.isDeployed = currentEnv === 'deployed';
 
   // OAuth scopes (same for both environments)
-  config.scopes = 'launch online_access openid profile fhirUser patient/Patient.read patient/Observation.read patient/MedicationRequest.read patient/MedicationRequest.write patient/MedicationDispense.read patient/MedicationDispense.write patient/AllergyIntolerance.read patient/Condition.read patient/DocumentReference.read patient/Encounter.read patient/Encounter.write user/Encounter.write user/MedicationRequest.write user/MedicationDispense.write';
+  config.scopes = 'launch online_access openid profile fhirUser patient/Patient.read patient/Observation.read patient/Procedure.read patient/MedicationRequest.read patient/MedicationRequest.write patient/MedicationDispense.read patient/MedicationDispense.write patient/AllergyIntolerance.read patient/Condition.read patient/DocumentReference.read patient/Encounter.read patient/Encounter.write patient/DiagnosticReport.read user/Encounter.write user/MedicationRequest.write user/MedicationDispense.write';
 
   // Log configuration for debugging
   console.log('=== CONFIGURATION ===');

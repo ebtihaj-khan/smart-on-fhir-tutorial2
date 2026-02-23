@@ -4408,6 +4408,368 @@
     return 'No value';
   }
 
+  /**
+   * Load and display RA Data Points for Protocols (FHIR Experiments page)
+   */
+  window.loadRADataPoints = function() {
+    if (!window.smartClient) {
+      alert('SMART client not initialized. Please launch the app from an EHR (e.g., SMART Health IT sandbox).');
+      return;
+    }
+    resetRaApiSources();
+    var smart = window.smartClient;
+    var patientId = smart.patient && smart.patient.id;
+    if (!patientId) {
+      alert('No patient context. Please launch from an EHR with a patient selected.');
+      return;
+    }
+    var fhirVersion = smart.state.serverUrl.indexOf('/r2/') >= 0 ? 'R2' : 'R4';
+    var medResource = fhirVersion === 'R2' ? 'MedicationOrder' : 'MedicationRequest';
+    
+    function buildUrl(resource, params) {
+      var url = smart.state.serverUrl + '/' + resource;
+      var parts = [];
+      for (var k in params) { if (params.hasOwnProperty(k)) { parts.push(encodeURIComponent(k) + '=' + encodeURIComponent(params[k])); } }
+      return url + (parts.length ? '?' + parts.join('&') : '');
+    }
+    function req(url, name) {
+      return smart.request({ url: wrapWithProxy(url), headers: { Accept: 'application/fhir+json' } })
+        .catch(function(e) { console.warn('RA: Failed to fetch ' + name, e); return null; });
+    }
+    
+    function setEl(id, val) {
+      var el = document.getElementById(id);
+      if (el) el.textContent = val != null && val !== '' ? val : '-';
+    }
+    
+    function setApiSource(fieldId, activeApi) {
+      var apiEl = document.getElementById(fieldId + '-api');
+      if (!apiEl) return;
+      var allApis = (apiEl.getAttribute('data-apis') || '').split(',').map(function(s) { return s.trim(); });
+      var activeList = (activeApi || '').split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+      var html = allApis.map(function(api) {
+        var isActive = activeList.length > 0 && activeList.indexOf(api) >= 0;
+        return '<span class="ra-api' + (isActive ? ' ra-api-active' : '') + '" data-api="' + api + '">' + api.replace(/([A-Z])/g, ' $1').trim() + '</span>';
+      }).join(', ');
+      apiEl.innerHTML = html;
+    }
+    
+    function resetRaApiSources() {
+      var ids = ['ra-patient-id','ra-dob','ra-age','ra-pregnancy-test-date','ra-pregnancy-test-result','ra-pregnancy','ra-weight','ra-weight-date','ra-weight-history','ra-active-meds','ra-last-refill-date','ra-refill-quantity','ra-dosage','ra-frequency','ra-prescribed-date','ra-dosage-start-date','ra-refill-indicator','ra-special-requirements','ra-delivery-type','ra-conditions','ra-diagnosis-date','ra-acute-conditions','ra-chronic-conditions','ra-visits-past-dates','ra-visits-past-types','ra-visits-planned-dates','ra-visits-planned-types','ra-labs-list','ra-labs-dates','ra-labs-results'];
+      ids.forEach(function(id) { setApiSource(id, null); });
+    }
+    
+    window._raPregFromProc = null;
+    window._raPregFromCond = null;
+    window._raPregFromObs = null;
+    window._raPregFromDr = null;
+    function applyRAPregnancyData() {
+      var fromProc = window._raPregFromProc;
+      var fromCond = window._raPregFromCond;
+      var fromObs = window._raPregFromObs;
+      var fromDr = window._raPregFromDr;
+      var date = (fromProc && fromProc.date) || (fromObs && fromObs.date) || (fromDr && fromDr.date) || '-';
+      var result = (fromProc && fromProc.result) || (fromObs && fromObs.result) || (fromDr && fromDr.result) || (fromCond && (typeof fromCond === 'object' ? fromCond.result : null)) || '-';
+      var condDisplay = fromCond && (typeof fromCond === 'object' ? fromCond.display : fromCond);
+      var pregnancy = condDisplay || result || '-';
+      setEl('ra-pregnancy-test-date', date);
+      setEl('ra-pregnancy-test-result', result);
+      setEl('ra-pregnancy', pregnancy);
+      var dateSrc = (fromProc && fromProc.date) ? 'Procedure' : (fromObs && fromObs.date) ? 'Observation' : (fromDr && fromDr.date) ? 'DiagnosticReport' : null;
+      var resultSrc = (fromProc && fromProc.result) ? 'Procedure' : (fromObs && fromObs.result) ? 'Observation' : (fromDr && fromDr.result) ? 'DiagnosticReport' : (fromCond && (typeof fromCond === 'object' ? fromCond.result : null)) ? 'Condition' : null;
+      var pregSrc = condDisplay ? 'Condition' : resultSrc;
+      setApiSource('ra-pregnancy-test-date', dateSrc);
+      setApiSource('ra-pregnancy-test-result', resultSrc);
+      setApiSource('ra-pregnancy', pregSrc);
+    }
+    
+    var now = new Date();
+    var dayMs = 24 * 60 * 60 * 1000;
+    var past540 = new Date(now.getTime() - 540 * dayMs);
+    var next150 = new Date(now.getTime() + 150 * dayMs);
+    
+    smart.patient.read().then(function(patient) {
+      var p = (patient.resourceType === 'Bundle' && patient.entry && patient.entry[0]) ? patient.entry[0].resource : patient;
+      setEl('ra-patient-id', p.id);
+      setEl('ra-dob', p.birthDate || '-');
+      if (p.birthDate) {
+        var birth = new Date(p.birthDate);
+        var age = Math.floor((now - birth) / (365.25 * dayMs));
+        setEl('ra-age', age + ' years');
+      } else { setEl('ra-age', '-'); }
+      setApiSource('ra-patient-id', 'Patient');
+      setApiSource('ra-dob', 'Patient');
+      setApiSource('ra-age', 'Patient');
+    }).catch(function() { setEl('ra-patient-id', '-'); setEl('ra-dob', '-'); setEl('ra-age', '-'); });
+    
+    var obsPregPromise = req(buildUrl('Observation', { patient: patientId, _count: 200 }), 'Observations').then(function(bundle) {
+      var obs = (bundle && bundle.entry) ? bundle.entry.map(function(e) { return e.resource; }) : [];
+      var weightObs = obs.filter(function(o) {
+        var code = (o.code && o.code.coding && o.code.coding[0] && o.code.coding[0].code) || '';
+        return code === '29463-7' || code === '3141-9' || (o.code && o.code.text && o.code.text.toLowerCase().indexOf('weight') >= 0);
+      }).sort(function(a, b) {
+        var da = a.effectiveDateTime || a.issued || '';
+        var db = b.effectiveDateTime || b.issued || '';
+        return (db || '').localeCompare(da || '');
+      });
+      var pregCodes = ['26836-4', '26836-8', '2106-3', '2110-5', '2112-1', '2116-4', '2118-8', '80384-1', '80385-8'];
+      var pregObs = obs.filter(function(o) {
+        var code = (o.code && o.code.coding && o.code.coding[0] && o.code.coding[0].code) || '';
+        var text = ((o.code && o.code.text) || '').toLowerCase();
+        return pregCodes.indexOf(code) >= 0 || text.indexOf('pregnancy') >= 0 || text.indexOf('hcg') >= 0 || text.indexOf('chorionic') >= 0 || text.indexOf('gonadotropin') >= 0;
+      }).sort(function(a, b) {
+        var da = a.effectiveDateTime || a.issued || '';
+        var db = b.effectiveDateTime || b.issued || '';
+        return (db || '').localeCompare(da || '');
+      });
+      
+      if (weightObs.length > 0) {
+        var w = weightObs[0];
+        var val = (w.valueQuantity && w.valueQuantity.value != null) ? w.valueQuantity.value + ' ' + (w.valueQuantity.unit || 'kg') : '-';
+        setEl('ra-weight', val);
+        setEl('ra-weight-date', (w.effectiveDateTime || w.issued || '').split('T')[0] || '-');
+        var hist = weightObs.slice(0, 5).map(function(x) {
+          var v = x.valueQuantity && x.valueQuantity.value;
+          var d = (x.effectiveDateTime || x.issued || '').split('T')[0];
+          return v != null ? (v + (x.valueQuantity.unit || '') + ' on ' + d) : null;
+        }).filter(Boolean).join('; ');
+        setEl('ra-weight-history', hist || '-');
+        setApiSource('ra-weight', 'Observation');
+        setApiSource('ra-weight-date', 'Observation');
+        setApiSource('ra-weight-history', 'Observation');
+      } else { setEl('ra-weight', '-'); setEl('ra-weight-date', '-'); setEl('ra-weight-history', '-'); }
+      
+      var obsDate = '';
+      var obsResult = '';
+      if (pregObs.length > 0) {
+        var pr = pregObs[0];
+        obsDate = (pr.effectiveDateTime || pr.issued || '').split('T')[0] || '';
+        obsResult = (pr.valueCodeableConcept && (pr.valueCodeableConcept.text || (pr.valueCodeableConcept.coding && pr.valueCodeableConcept.coding[0] && pr.valueCodeableConcept.coding[0].display))) || (pr.valueString) || (pr.valueBoolean !== undefined ? (pr.valueBoolean ? 'Positive' : 'Negative') : '') || (pr.valueQuantity && pr.valueQuantity.value != null ? (pr.valueQuantity.value + ' ' + (pr.valueQuantity.unit || pr.valueQuantity.code || '')).trim() : '') || (pr.component && pr.component[0] && ((pr.component[0].valueCodeableConcept && (pr.component[0].valueCodeableConcept.text || (pr.component[0].valueCodeableConcept.coding && pr.component[0].valueCodeableConcept.coding[0] && pr.component[0].valueCodeableConcept.coding[0].display))) || (pr.component[0].valueString) || (pr.component[0].valueQuantity && pr.component[0].valueQuantity.value != null ? pr.component[0].valueQuantity.value + ' ' + (pr.component[0].valueQuantity.unit || '') : ''))) || '';
+      }
+      window._raPregFromObs = { date: obsDate, result: obsResult };
+      applyRAPregnancyData();
+    });
+    
+    var procPromise = req(buildUrl('Procedure', { patient: patientId, _count: 100 }), 'Procedures').then(function(procBundle) {
+      var procs = (procBundle && procBundle.entry) ? procBundle.entry.map(function(e) { return e.resource; }) : [];
+      var pregProcs = procs.filter(function(p) {
+        var code = (p.code && p.code.coding && p.code.coding[0] && p.code.coding[0].code) || '';
+        var text = ((p.code && p.code.text) || '').toLowerCase();
+        return code === '26836-4' || code === '26836-8' || code === '16932000' || code === '10288007' || text.indexOf('pregnancy') >= 0 || text.indexOf('hcg') >= 0 || text.indexOf('chorionic') >= 0;
+      }).sort(function(a, b) {
+        var da = a.performedDateTime || (a.performedPeriod && (a.performedPeriod.start || a.performedPeriod.end)) || '';
+        var db = b.performedDateTime || (b.performedPeriod && (b.performedPeriod.start || b.performedPeriod.end)) || '';
+        return (db || '').localeCompare(da || '');
+      });
+      var date = '';
+      var result = '';
+      if (pregProcs.length > 0) {
+        var pp = pregProcs[0];
+        date = (pp.performedDateTime || (pp.performedPeriod && (pp.performedPeriod.start || pp.performedPeriod.end)) || '').split('T')[0] || '';
+        result = (pp.outcome && (pp.outcome.text || (pp.outcome.coding && pp.outcome.coding[0] && pp.outcome.coding[0].display))) || '';
+      }
+      window._raPregFromProc = { date: date, result: result };
+    });
+    
+    var drPromise = req(buildUrl('DiagnosticReport', { patient: patientId, _count: 100 }), 'DiagnosticReport').then(function(drBundle) {
+      var reports = (drBundle && drBundle.entry) ? drBundle.entry.map(function(e) { return e.resource; }) : [];
+      var pregDrs = reports.filter(function(r) {
+        var codeStr = (r.code && r.code.coding && r.code.coding[0]) ? ((r.code.coding[0].code || '') + ' ' + (r.code.coding[0].display || '') + ' ' + (r.code.text || '')).toLowerCase() : '';
+        var concl = ((r.conclusion || '') + ' ' + (r.conclusionCode && r.conclusionCode[0] && (r.conclusionCode[0].text || (r.conclusionCode[0].coding && r.conclusionCode[0].coding[0] && r.conclusionCode[0].coding[0].display)) || '')).toLowerCase();
+        return codeStr.indexOf('pregnancy') >= 0 || codeStr.indexOf('hcg') >= 0 || codeStr.indexOf('chorionic') >= 0 || concl.indexOf('pregnancy') >= 0 || concl.indexOf('hcg') >= 0 || concl.indexOf('chorionic') >= 0;
+      }).sort(function(a, b) {
+        var da = (a.effectiveDateTime || (a.effectivePeriod && (a.effectivePeriod.start || a.effectivePeriod.end)) || '').split('T')[0];
+        var db = (b.effectiveDateTime || (b.effectivePeriod && (b.effectivePeriod.start || b.effectivePeriod.end)) || '').split('T')[0];
+        return (db || '').localeCompare(da || '');
+      });
+      var drDate = '';
+      var drResult = '';
+      if (pregDrs.length > 0) {
+        var pd = pregDrs[0];
+        drDate = (pd.effectiveDateTime || (pd.effectivePeriod && (pd.effectivePeriod.start || pd.effectivePeriod.end)) || '').split('T')[0] || '';
+        drResult = (pd.conclusion || (pd.conclusionCode && pd.conclusionCode[0] && (pd.conclusionCode[0].text || (pd.conclusionCode[0].coding && pd.conclusionCode[0].coding[0] && pd.conclusionCode[0].coding[0].display)))) || '';
+      }
+      window._raPregFromDr = { date: drDate, result: drResult };
+    });
+    
+    req(buildUrl(medResource, { patient: patientId, status: 'active', _count: 100 }), 'Medications').then(function(medBundle) {
+      var meds = (medBundle && medBundle.entry) ? medBundle.entry.map(function(e) { return e.resource; }) : [];
+      var names = meds.map(function(m) {
+        return (m.medicationCodeableConcept && (m.medicationCodeableConcept.text || (m.medicationCodeableConcept.coding && m.medicationCodeableConcept.coding[0] && m.medicationCodeableConcept.coding[0].display))) || (m.medicationReference && m.medicationReference.display) || 'Unknown';
+      }).join(', ');
+      setEl('ra-active-meds', names || '-');
+      var dosages = meds.map(function(m) {
+        var d = m.dosageInstruction && m.dosageInstruction[0];
+        if (!d) return null;
+        var text = d.text || '';
+        if (!text && d.doseAndRate && d.doseAndRate[0]) {
+          var dr = d.doseAndRate[0];
+          if (dr.doseQuantity) text = dr.doseQuantity.value + ' ' + (dr.doseQuantity.unit || '');
+          if (dr.timing && dr.timing.code && dr.timing.code.text) text += (text ? ' ' : '') + dr.timing.code.text;
+        }
+        return text;
+      }).filter(Boolean).join('; ');
+      setEl('ra-dosage', dosages || '-');
+      var freqs = meds.map(function(m) {
+        var d = m.dosageInstruction && m.dosageInstruction[0];
+        return (d && d.timing && d.timing.code && d.timing.code.text) ? d.timing.code.text : null;
+      }).filter(Boolean).join('; ');
+      setEl('ra-frequency', freqs || '-');
+      var authDates = meds.map(function(m) { return m.authoredOn ? m.authoredOn.split('T')[0] : null; }).filter(Boolean);
+      setEl('ra-prescribed-date', authDates.length ? authDates.join(', ') : '-');
+      setEl('ra-dosage-start-date', authDates[0] || '-');
+      if (meds.length > 0) {
+        setApiSource('ra-active-meds', 'MedicationRequest');
+        setApiSource('ra-dosage', 'MedicationRequest');
+        setApiSource('ra-frequency', 'MedicationRequest');
+        setApiSource('ra-prescribed-date', 'MedicationRequest');
+        setApiSource('ra-dosage-start-date', 'MedicationRequest');
+      }
+    });
+    
+    req(buildUrl('MedicationDispense', { patient: patientId, _count: 100 }), 'MedicationDispense').then(function(dispBundle) {
+      var dispenses = (dispBundle && dispBundle.entry) ? dispBundle.entry.map(function(e) { return e.resource; }) : [];
+      if (dispenses.length > 0) {
+        var sorted = dispenses.sort(function(a, b) {
+          var da = a.whenHandedOver || a.whenPrepared || '';
+          var db = b.whenHandedOver || b.whenPrepared || '';
+          return (db || '').localeCompare(da || '');
+        });
+        var last = sorted[0];
+        setEl('ra-last-refill-date', (last.whenHandedOver || last.whenPrepared || '').split('T')[0] || '-');
+        var qty = (last.quantity && last.quantity.value != null) ? last.quantity.value + ' ' + (last.quantity.unit || '') : '-';
+        setEl('ra-refill-quantity', qty);
+        setApiSource('ra-last-refill-date', 'MedicationDispense');
+        setApiSource('ra-refill-quantity', 'MedicationDispense');
+      } else { setEl('ra-last-refill-date', '-'); setEl('ra-refill-quantity', '-'); }
+    });
+    
+    var condPregPromise = req(buildUrl('Condition', { patient: patientId, _count: 100 }), 'Conditions').then(function(condBundle) {
+      var conds = (condBundle && condBundle.entry) ? condBundle.entry.map(function(e) { return e.resource; }) : [];
+      var pregCond = conds.find(function(c) {
+        var code = (c.code && c.code.coding && c.code.coding[0] && c.code.coding[0].code) || '';
+        var text = ((c.code && c.code.text) || '').toLowerCase();
+        return code === '77386006' || code === '72892002' || text.indexOf('pregnancy') >= 0 || text.indexOf('pregnant') >= 0;
+      });
+      var condDisplay = null;
+      var condResult = null;
+      if (pregCond) {
+        condDisplay = (pregCond.code && pregCond.code.text) || (pregCond.code && pregCond.code.coding && pregCond.code.coding[0] && pregCond.code.coding[0].display) || 'Pregnancy';
+        var verif = (pregCond.verificationStatus && pregCond.verificationStatus.coding && pregCond.verificationStatus.coding[0] && pregCond.verificationStatus.coding[0].code) || (pregCond.verificationStatus && pregCond.verificationStatus.coding && pregCond.verificationStatus.coding[0] && pregCond.verificationStatus.coding[0].display);
+        if (verif === 'confirmed' || verif === 'verified') condResult = 'Positive (Confirmed)';
+        else if (verif === 'refuted') condResult = 'Negative';
+        else if (verif === 'entered-in-error') condResult = 'Entered in Error';
+        else condResult = condDisplay;
+      }
+      window._raPregFromCond = pregCond ? { display: condDisplay, result: condResult } : null;
+      var allConds = conds.map(function(c) {
+        return (c.code && c.code.text) || (c.code && c.code.coding && c.code.coding[0] && c.code.coding[0].display) || 'Unknown';
+      }).join(', ');
+      setEl('ra-conditions', allConds || '-');
+      var onsetDates = conds.map(function(c) { return c.onsetDateTime ? c.onsetDateTime.split('T')[0] : null; }).filter(Boolean);
+      setEl('ra-diagnosis-date', onsetDates.length ? onsetDates.join(', ') : '-');
+      var acute = conds.filter(function(c) {
+        var s = (c.clinicalStatus && c.clinicalStatus.coding && c.clinicalStatus.coding[0] && c.clinicalStatus.coding[0].code) || '';
+        return s === 'active' && (c.verificationStatus && (c.verificationStatus.coding && c.verificationStatus.coding[0] && c.verificationStatus.coding[0].code) === 'confirmed');
+      }).map(function(c) {
+        return (c.code && c.code.text) || (c.code && c.code.coding && c.code.coding[0] && c.code.coding[0].display) || '';
+      }).filter(Boolean).join(', ');
+      var chronic = conds.filter(function(c) {
+        return (c.bodySite && c.bodySite.length > 0) || ((c.code && c.code.coding && c.code.coding[0] && (c.code.coding[0].code + '').indexOf('chronic') >= 0));
+      }).map(function(c) {
+        return (c.code && c.code.text) || (c.code && c.code.coding && c.code.coding[0] && c.code.coding[0].display) || '';
+      }).filter(Boolean).join(', ');
+      setEl('ra-acute-conditions', acute || '-');
+      setEl('ra-chronic-conditions', chronic || '-');
+      if (conds.length > 0) {
+        setApiSource('ra-conditions', 'Condition');
+        setApiSource('ra-diagnosis-date', 'Condition');
+        setApiSource('ra-acute-conditions', 'Condition');
+        setApiSource('ra-chronic-conditions', 'Condition');
+      }
+    });
+    Promise.all([obsPregPromise, procPromise, condPregPromise, drPromise]).then(function() { applyRAPregnancyData(); });
+    
+    // Encounters = Visits in FHIR
+    var encParams = { patient: patientId, _count: 200 };
+    req(buildUrl('Encounter', encParams), 'Encounters').then(function(encBundle) {
+      var encs = (encBundle && encBundle.entry) ? encBundle.entry.map(function(e) { return e.resource; }) : [];
+      function getEncDate(e) {
+        if (e.period && e.period.start) return e.period.start;
+        if (e.period && e.period.end) return e.period.end;
+        if (e.meta && e.meta.lastUpdated) return e.meta.lastUpdated;
+        return null;
+      }
+      var pastVisits = encs.filter(function(e) {
+        if (e.status === 'cancelled') return false;
+        var d = getEncDate(e);
+        if (!d) return true; // Include if no date (let server decide)
+        var dt = new Date(d);
+        return dt >= past540 && dt <= now;
+      });
+      pastVisits.sort(function(a, b) {
+        var da = getEncDate(a) || '';
+        var db = getEncDate(b) || '';
+        return (db || '').localeCompare(da || '');
+      });
+      var plannedVisits = encs.filter(function(e) {
+        var d = e.period && e.period.start;
+        if (!d) return false;
+        var dt = new Date(d);
+        return dt >= now && dt <= next150 && (e.status === 'planned' || e.status === 'booked');
+      });
+      plannedVisits.sort(function(a, b) {
+        var da = (a.period && a.period.start) || '';
+        var db = (b.period && b.period.start) || '';
+        return (da || '').localeCompare(db || '');
+      });
+      setEl('ra-visits-past-dates', pastVisits.length ? pastVisits.map(function(e) { var d = getEncDate(e) || ''; return d.split('T')[0]; }).join(', ') : 'No encounters in last 540 days');
+      setEl('ra-visits-past-types', pastVisits.length ? pastVisits.map(function(e) { var t = e.type && e.type[0] && (e.type[0].text || (e.type[0].coding && e.type[0].coding[0] && e.type[0].coding[0].display)); return t || e.class ? (e.class.display || e.class.code) : 'Visit'; }).join(', ') : '-');
+      setEl('ra-visits-planned-dates', plannedVisits.length ? plannedVisits.map(function(e) { var d = (e.period && e.period.start) || ''; return d.split('T')[0]; }).join(', ') : 'No planned visits in next 150 days');
+      setEl('ra-visits-planned-types', plannedVisits.length ? plannedVisits.map(function(e) { var t = e.type && e.type[0] && (e.type[0].text || (e.type[0].coding && e.type[0].coding[0] && e.type[0].coding[0].display)); return t || 'Planned'; }).join(', ') : '-');
+      if (pastVisits.length > 0 || plannedVisits.length > 0) {
+        setApiSource('ra-visits-past-dates', 'Encounter');
+        setApiSource('ra-visits-past-types', 'Encounter');
+        setApiSource('ra-visits-planned-dates', 'Encounter');
+        setApiSource('ra-visits-planned-types', 'Encounter');
+      }
+    });
+    
+    req(buildUrl('DiagnosticReport', { patient: patientId, _count: 100 }), 'DiagnosticReport').then(function(drBundle) {
+      var reports = (drBundle && drBundle.entry) ? drBundle.entry.map(function(e) { return e.resource; }) : [];
+      var obsUrl = buildUrl('Observation', { patient: patientId, _count: 200 });
+      req(obsUrl, 'Labs').then(function(obsBundle) {
+        var labObs = (obsBundle && obsBundle.entry) ? obsBundle.entry.map(function(e) { return e.resource; }) : [];
+        var labTypes = ['laboratory', 'Lab', 'lab'];
+        var labs = labObs.filter(function(o) {
+          var cat = (o.category && o.category[0] && o.category[0].coding && o.category[0].coding[0] && o.category[0].coding[0].code) || '';
+          var catText = (o.category && o.category[0] && o.category[0].text) || '';
+          return labTypes.indexOf(cat) >= 0 || labTypes.some(function(t) { return catText.toLowerCase().indexOf(t.toLowerCase()) >= 0; });
+        });
+        var list = labs.length ? labs.map(function(o) { return (o.code && o.code.text) || (o.code && o.code.coding && o.code.coding[0] && o.code.coding[0].display) || o.code.coding[0].code; }).filter(Boolean).join(', ') : (reports.length ? reports.map(function(r) { return r.code && (r.code.text || (r.code.coding && r.code.coding[0] && r.code.coding[0].display)); }).filter(Boolean).join(', ') : '-');
+        setEl('ra-labs-list', list || '-');
+        var dates = labs.length ? labs.map(function(o) { return (o.effectiveDateTime || o.issued || '').split('T')[0]; }).filter(Boolean).join(', ') : (reports.length ? reports.map(function(r) { return (r.effectiveDateTime || r.issued || '').split('T')[0]; }).filter(Boolean).join(', ') : '-');
+        setEl('ra-labs-dates', dates || '-');
+        var results = labs.map(function(o) {
+          var val = (o.valueQuantity && o.valueQuantity.value != null) ? o.valueQuantity.value + ' ' + (o.valueQuantity.unit || '') : (o.valueCodeableConcept && (o.valueCodeableConcept.text || (o.valueCodeableConcept.coding && o.valueCodeableConcept.coding[0] && o.valueCodeableConcept.coding[0].display))) || o.valueString || '-';
+          var name = (o.code && o.code.text) || (o.code && o.code.coding && o.code.coding[0] && o.code.coding[0].display) || '';
+          return name ? name + ': ' + val : null;
+        }).filter(Boolean).join('; ');
+        setEl('ra-labs-results', results || '-');
+        if (labs.length > 0 || reports.length > 0) {
+          var labSrc = labs.length > 0 ? 'Observation' : 'DiagnosticReport';
+          setApiSource('ra-labs-list', labSrc);
+          setApiSource('ra-labs-dates', labSrc);
+          setApiSource('ra-labs-results', labSrc);
+        }
+      });
+    });
+    
+    setEl('ra-refill-indicator', '-');
+    setEl('ra-special-requirements', '-');
+    setEl('ra-delivery-type', '-');
+  };
+
   function displayAllObservations(observations) {
     console.log('displayAllObservations called with', observations ? observations.length : 0, 'items');
     var html = '';

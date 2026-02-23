@@ -20,8 +20,24 @@
     </div>
     
     <div id='holder' class="app-container">
-      <!-- Header -->
-      <header class="app-header">
+      <!-- Sidebar -->
+      <aside class="app-sidebar">
+        <nav class="sidebar-nav">
+          <a href="#" class="nav-item active" data-page="dashboard">
+            <i class="fas fa-chart-line"></i>
+            <span>Dashboard</span>
+          </a>
+          <a href="#" class="nav-item" data-page="fhir-experiments">
+            <i class="fas fa-flask"></i>
+            <span>FHIR Experiments</span>
+          </a>
+        </nav>
+      </aside>
+
+      <!-- Main content area -->
+      <div class="app-body">
+        <!-- Header -->
+        <header class="app-header">
         <div class="header-content">
                  <div class="app-title">
                    <i class="fas fa-heartbeat"></i>
@@ -34,8 +50,9 @@
         </div>
       </header>
 
-      <!-- Main Content -->
-      <main class="main-content">
+        <!-- Page: Dashboard (Metrics) -->
+        <div id="page-dashboard" class="page active">
+          <main class="main-content">
         <!-- Patient Demographics Card -->
         <section class="card patient-card">
           <div class="card-header">
@@ -571,7 +588,118 @@
             </form>
           </div>
         </section>
-      </main>
+          </main>
+        </div>
+
+        <!-- Page: FHIR Experiments (RA Data Points) -->
+        <div id="page-fhir-experiments" class="page">
+          <main class="main-content">
+            <section class="card ra-intro-card">
+              <div class="card-header">
+                <i class="fas fa-flask"></i>
+                <h2>RA Data Points for Protocols</h2>
+              </div>
+              <div class="card-content">
+                <p style="color: #718096; font-size: 14px; margin-bottom: 16px;">Data points sourced from FHIR resources for protocol workflows. Launch from an EHR to populate.</p>
+                <button id="ra-load-btn" style="padding: 8px 16px; background: #3182ce; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 500;">
+                  <i class="fas fa-sync-alt"></i> Load Data
+                </button>
+              </div>
+            </section>
+
+            <!-- Patient Details -->
+            <section class="card ra-card">
+              <div class="card-header">
+                <i class="fas fa-user-circle"></i>
+                <h2>Patient Details</h2>
+              </div>
+              <div class="card-content">
+                <div class="info-grid ra-info-grid">
+                  <div class="info-item"><label>Patient ID <span class="ra-api-source" id="ra-patient-id-api" data-apis="Patient">Patient</span></label><span id="ra-patient-id" class="value">-</span></div>
+                  <div class="info-item"><label>Date of Birth <span class="ra-api-source" id="ra-dob-api" data-apis="Patient">Patient</span></label><span id="ra-dob" class="value">-</span></div>
+                  <div class="info-item"><label>Age <span class="ra-api-source" id="ra-age-api" data-apis="Patient">Patient</span></label><span id="ra-age" class="value">-</span></div>
+                  <div class="info-item"><label>Date of Pregnancy Test <span class="ra-api-source" id="ra-pregnancy-test-date-api" data-apis="Procedure,Observation,DiagnosticReport">Procedure, Observation, DiagnosticReport</span></label><span id="ra-pregnancy-test-date" class="value">-</span></div>
+                  <div class="info-item"><label>Pregnancy Test Result <span class="ra-api-source" id="ra-pregnancy-test-result-api" data-apis="Condition,Procedure,Observation,DiagnosticReport">Condition, Procedure, Observation, DiagnosticReport</span></label><span id="ra-pregnancy-test-result" class="value">-</span></div>
+                  <div class="info-item"><label>Pregnancy <span class="ra-api-source" id="ra-pregnancy-api" data-apis="Condition,Observation">Condition, Observation</span></label><span id="ra-pregnancy" class="value">-</span></div>
+                  <div class="info-item"><label>Weight <span class="ra-api-source" id="ra-weight-api" data-apis="Observation">Observation</span></label><span id="ra-weight" class="value">-</span></div>
+                  <div class="info-item"><label>Date When Weight Was Taken <span class="ra-api-source" id="ra-weight-date-api" data-apis="Observation">Observation</span></label><span id="ra-weight-date" class="value">-</span></div>
+                  <div class="info-item" style="grid-column: 1 / -1;"><label>History of Weight Change <span class="ra-api-source" id="ra-weight-history-api" data-apis="Observation">Observation</span></label><span id="ra-weight-history" class="value">-</span></div>
+                </div>
+              </div>
+            </section>
+
+            <!-- Medications Details -->
+            <section class="card ra-card">
+              <div class="card-header">
+                <i class="fas fa-pills"></i>
+                <h2>Medications Details</h2>
+              </div>
+              <div class="card-content">
+                <div id="ra-medications-summary" class="ra-summary-list"></div>
+                <div class="info-grid ra-info-grid" style="margin-top: 16px;">
+                  <div class="info-item" style="grid-column: 1 / -1;"><label>All Active Medications <span class="ra-api-source" id="ra-active-meds-api" data-apis="MedicationRequest">MedicationRequest</span></label><span id="ra-active-meds" class="value">-</span></div>
+                  <div class="info-item"><label>Date of Last Refill (All Meds) <span class="ra-api-source" id="ra-last-refill-date-api" data-apis="MedicationDispense">MedicationDispense</span></label><span id="ra-last-refill-date" class="value">-</span></div>
+                  <div class="info-item"><label>Refill Quantity (Last Refill) <span class="ra-api-source" id="ra-refill-quantity-api" data-apis="MedicationDispense">MedicationDispense</span></label><span id="ra-refill-quantity" class="value">-</span></div>
+                  <div class="info-item" style="grid-column: 1 / -1;"><label>Dosage of All Active Medications <span class="ra-api-source" id="ra-dosage-api" data-apis="MedicationRequest">MedicationRequest</span></label><span id="ra-dosage" class="value">-</span></div>
+                  <div class="info-item" style="grid-column: 1 / -1;"><label>Frequency of Dosage <span class="ra-api-source" id="ra-frequency-api" data-apis="MedicationRequest">MedicationRequest</span></label><span id="ra-frequency" class="value">-</span></div>
+                  <div class="info-item"><label>Date When Medication Was Prescribed <span class="ra-api-source" id="ra-prescribed-date-api" data-apis="MedicationRequest">MedicationRequest</span></label><span id="ra-prescribed-date" class="value">-</span></div>
+                  <div class="info-item"><label>Date When Current Dosage Started <span class="ra-api-source" id="ra-dosage-start-date-api" data-apis="MedicationRequest">MedicationRequest</span></label><span id="ra-dosage-start-date" class="value">-</span></div>
+                  <div class="info-item"><label>Must Be Seen for Refills Indicator <span class="ra-api-source" id="ra-refill-indicator-api" data-apis="MedicationRequest">MedicationRequest</span></label><span id="ra-refill-indicator" class="value">-</span></div>
+                  <div class="info-item"><label>Special Requirements <span class="ra-api-source" id="ra-special-requirements-api" data-apis="MedicationRequest">MedicationRequest</span></label><span id="ra-special-requirements" class="value">-</span></div>
+                  <div class="info-item"><label>Medication Delivery Type <span class="ra-api-source" id="ra-delivery-type-api" data-apis="MedicationRequest,MedicationDispense">MedicationRequest, MedicationDispense</span></label><span id="ra-delivery-type" class="value">-</span></div>
+                </div>
+              </div>
+            </section>
+
+            <!-- Conditions -->
+            <section class="card ra-card">
+              <div class="card-header">
+                <i class="fas fa-stethoscope"></i>
+                <h2>Conditions</h2>
+              </div>
+              <div class="card-content">
+                <div class="info-grid ra-info-grid">
+                  <div class="info-item" style="grid-column: 1 / -1;"><label>All Diagnosed Medical Conditions <span class="ra-api-source" id="ra-conditions-api" data-apis="Condition">Condition</span></label><span id="ra-conditions" class="value">-</span></div>
+                  <div class="info-item"><label>Date of Diagnosis <span class="ra-api-source" id="ra-diagnosis-date-api" data-apis="Condition">Condition</span></label><span id="ra-diagnosis-date" class="value">-</span></div>
+                  <div class="info-item"><label>Acute Conditions <span class="ra-api-source" id="ra-acute-conditions-api" data-apis="Condition">Condition</span></label><span id="ra-acute-conditions" class="value">-</span></div>
+                  <div class="info-item"><label>Chronic Conditions <span class="ra-api-source" id="ra-chronic-conditions-api" data-apis="Condition">Condition</span></label><span id="ra-chronic-conditions" class="value">-</span></div>
+                </div>
+              </div>
+            </section>
+
+            <!-- Visits -->
+            <section class="card ra-card">
+              <div class="card-header">
+                <i class="fas fa-calendar-alt"></i>
+                <h2>Visits</h2>
+              </div>
+              <div class="card-content">
+                <div class="info-grid ra-info-grid">
+                  <div class="info-item" style="grid-column: 1 / -1;"><label>Date of All Visits (Last 540 Days) <span class="ra-api-source" id="ra-visits-past-dates-api" data-apis="Encounter">Encounter</span></label><span id="ra-visits-past-dates" class="value">-</span></div>
+                  <div class="info-item" style="grid-column: 1 / -1;"><label>Type of Visits (Last 540 Days) <span class="ra-api-source" id="ra-visits-past-types-api" data-apis="Encounter">Encounter</span></label><span id="ra-visits-past-types" class="value">-</span></div>
+                  <div class="info-item" style="grid-column: 1 / -1;"><label>Date of All Planned Visits (Next 150 Days) <span class="ra-api-source" id="ra-visits-planned-dates-api" data-apis="Encounter">Encounter</span></label><span id="ra-visits-planned-dates" class="value">-</span></div>
+                  <div class="info-item" style="grid-column: 1 / -1;"><label>Type of Planned Visits (Next 150 Days) <span class="ra-api-source" id="ra-visits-planned-types-api" data-apis="Encounter">Encounter</span></label><span id="ra-visits-planned-types" class="value">-</span></div>
+                </div>
+              </div>
+            </section>
+
+            <!-- Labs -->
+            <section class="card ra-card">
+              <div class="card-header">
+                <i class="fas fa-vial"></i>
+                <h2>Labs</h2>
+              </div>
+              <div class="card-content">
+                <div class="info-grid ra-info-grid">
+                  <div class="info-item" style="grid-column: 1 / -1;"><label>List of All Labs Completed <span class="ra-api-source" id="ra-labs-list-api" data-apis="Observation,DiagnosticReport">Observation, DiagnosticReport</span></label><span id="ra-labs-list" class="value">-</span></div>
+                  <div class="info-item" style="grid-column: 1 / -1;"><label>Date of Labs Completed <span class="ra-api-source" id="ra-labs-dates-api" data-apis="Observation,DiagnosticReport">Observation, DiagnosticReport</span></label><span id="ra-labs-dates" class="value">-</span></div>
+                  <div class="info-item" style="grid-column: 1 / -1;"><label>Results of All Labs Completed <span class="ra-api-source" id="ra-labs-results-api" data-apis="Observation,DiagnosticReport">Observation, DiagnosticReport</span></label><span id="ra-labs-results" class="value">-</span></div>
+                </div>
+              </div>
+            </section>
+          </main>
+        </div>
+      </div>
     </div>
     <!-- Required JS files to enable this page to embed within an MPage -->
     <!--
@@ -580,13 +708,38 @@
       <script src='./lib/js/cerner-smart-embeddable-lib-1.0.0.min.js'></script>
     -->
 
-    <!-- Application-level javascript-->
-    <script src='./src/js/example-smart-app.js?v=6.5'></script>
-
-    <!-- FHIR Client JS Library -->
+    <!-- FHIR Client & jQuery must load before app (app uses FHIR.oauth2 and $) -->
     <script src='https://unpkg.com/fhirclient@2.4.0/build/fhir-client.js?v=2.4.0'></script>
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.12.4/jquery.min.js"></script>
+    <script src='./src/js/example-smart-app.js?v=6.6'></script>
     <script>
+      // Sidebar page navigation
+      $(document).on('click', '.sidebar-nav .nav-item', function(e) {
+        e.preventDefault();
+        var page = $(this).data('page');
+        $('.sidebar-nav .nav-item').removeClass('active');
+        $(this).addClass('active');
+        $('.page').removeClass('active');
+        $('#page-' + page).addClass('active');
+      });
+      
+      // RA Data Points - Load Data button
+      $(document).on('click', '#ra-load-btn', function() {
+        var $btn = $(this);
+        var originalHtml = $btn.html();
+        $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Loading...');
+        if (typeof window.loadRADataPoints === 'function') {
+          try {
+            window.loadRADataPoints();
+          } finally {
+            $btn.prop('disabled', false).html(originalHtml);
+          }
+        } else {
+          alert('Load function not available. Ensure the app script is loaded.');
+          $btn.prop('disabled', false).html(originalHtml);
+        }
+      });
+      
       // Show the dashboard immediately on page load
       $(document).ready(function() {
         $('#holder').addClass('show');
